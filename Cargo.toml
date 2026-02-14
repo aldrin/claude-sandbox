@@ -1,0 +1,22 @@
+[package]
+name = "claude-sandbox"
+version = "0.1.0"
+authors = ["Aldrin J D'Souza <code@aldrin.co>"]
+edition = "2021"
+description = "Run Claude Code in isolated Apple container VMs with automatic keychain authentication"
+license = "MIT"
+homepage = "https://github.com/aldrin/claude-sandbox"
+repository = "https://github.com/aldrin/claude-sandbox"
+readme = "README.md"
+keywords = ["claude", "sandbox", "container", "macos", "ai"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+
+[dev-dependencies]
+tempfile = "3"

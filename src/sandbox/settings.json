@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+	"mcp__aws__aws___read_documentation",
+	"mcp__aws__aws___search_documentation"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "spinnerTipsEnabled": false
+}

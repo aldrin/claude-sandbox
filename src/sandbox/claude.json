@@ -1,0 +1,22 @@
+{
+  "hasCompletedOnboarding": true,
+  "installMethod": "native",
+  "mcpServers": {
+    "aws": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    }
+  },
+  "projects": {
+    "/home/claude": {
+      "hasTrustDialogAccepted": true,
+      "allowedTools": [
+        "aws___search_documentation",
+        "aws___read_documentation",
+        "aws___recommend",
+        "aws___list_regions",
+        "aws___get_regional_availability"
+      ]
+    }
+  }
+}

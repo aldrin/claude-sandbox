@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" width="760" height="180">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#8b949e"/>
+    </marker>
+    <marker id="arr-y" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#d4a72c"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #24292f; }
+    .mono { font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace; }
+    .dim { font-size: 10px; fill: #57606a; }
+  </style>
+
+  <!-- 1. claude auth login -->
+  <rect x="16" y="60" width="148" height="60" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="90" y="86" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="#57606a">claude</text>
+  <text x="90" y="104" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="#57606a">auth login</text>
+
+  <!-- Arrow 1 -->
+  <line x1="165" y1="90" x2="198" y2="90" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="181" y="82" text-anchor="middle" class="dim">stores</text>
+
+  <!-- 2. Keychain -->
+  <rect x="202" y="60" width="120" height="60" rx="6" fill="#fff8c5" stroke="#d4a72c" stroke-width="1.5"/>
+  <text x="262" y="84" text-anchor="middle" font-size="13" font-weight="600" fill="#7d4e00">Keychain</text>
+  <text x="262" y="102" text-anchor="middle" font-size="10" fill="#7d4e00">OAuth token</text>
+
+  <!-- Arrow 2: yellow dashed -->
+  <line x1="323" y1="90" x2="356" y2="90" stroke="#d4a72c" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-y)"/>
+  <text x="339" y="82" text-anchor="middle" class="dim">reads</text>
+
+  <!-- 3. claude-sandbox run -->
+  <rect x="360" y="64" width="160" height="52" rx="6" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="440" y="95" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="#57606a">claude-sandbox run</text>
+
+  <!-- Arrow 3 -->
+  <line x1="521" y1="90" x2="554" y2="90" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 4. container run -->
+  <rect x="558" y="28" width="186" height="124" rx="6" fill="#ddf4ff" stroke="#54aeff" stroke-width="1.5"/>
+  <text x="651" y="52" text-anchor="middle" font-size="12" font-weight="700" fill="#0550ae">container run</text>
+  <line x1="558" y1="62" x2="744" y2="62" stroke="#54aeff" stroke-width="1" opacity="0.5"/>
+  <text x="574" y="82" class="mono" font-size="10" fill="#0969da">-e CLAUDE_CODE_OAUTH_TOKEN</text>
+  <text x="574" y="102" class="mono" font-size="10" fill="#0969da">-v $(pwd):/home/claude/code</text>
+  <text x="574" y="122" class="mono" font-size="10" fill="#0969da">-m 4G -c 2</text>
+</svg>

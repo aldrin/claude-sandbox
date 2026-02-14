@@ -1,0 +1,105 @@
+# Claude Code Development Container
+# Provides a complete development environment for working with Claude Code,
+# including Rust toolchain and Python tools.
+
+FROM alpine:3.19
+
+# Install system-level dependencies for all sections below.
+# These are grouped by purpose but installed together to minimize layers.
+#   Base:     curl, git, ca-certificates, bash
+#   Claude:   ripgrep (Grep tool), libgcc + libstdc++ (required on Alpine/musl)
+#   Sandbox:  bubblewrap + socat (bash isolation), libcap
+#   Rust:     build-base, pkgconfig, openssl-dev
+#   Python:   python3, py3-pip, python3-dev
+RUN apk add --no-cache \
+    curl git ca-certificates bash \
+    ripgrep libgcc libstdc++ \
+    bubblewrap socat libcap \
+    build-base pkgconfig openssl-dev \
+    python3 py3-pip python3-dev
+
+# Fix bubblewrap: setuid root so it works inside the container VM
+RUN chmod u+s /usr/bin/bwrap
+
+# Create non-root user
+RUN adduser -D -h /home/claude -s /bin/bash claude
+USER claude
+
+# =============================================================================
+# Claude Code
+# =============================================================================
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Claude Code installs to ~/.local/bin; set PATH now so later steps can use it
+ENV PATH="/home/claude/.local/bin:${PATH}"
+
+# Use system ripgrep: the bundled binary is glibc-compiled and fails on Alpine
+ENV USE_BUILTIN_RIPGREP=0
+# Enable LSP tool support
+ENV ENABLE_LSP_TOOL=1
+# Updates don't persist in ephemeral containers; disable to avoid wasted downloads
+ENV DISABLE_AUTOUPDATER=1
+# Allow plugin marketplace to function even though Claude Code auto-updates are off
+ENV FORCE_AUTOUPDATE_PLUGINS=true
+# No point prompting for feedback at the end of an ephemeral session
+ENV CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+# Ensure 256-color support; not always inherited from the host terminal
+ENV TERM=xterm-256color
+
+# Temp directory: bubblewrap mounts a fresh empty tmpfs at /tmp so the default
+# /tmp/claude/ path never exists. Redirect Claude Code's own temp dir and the
+# shell TMPDIR into the sandbox-writable home directory.
+ENV CLAUDE_CODE_TMPDIR="/home/claude/tmp"
+ENV TMPDIR="/home/claude/tmp"
+RUN mkdir -p /home/claude/tmp
+
+# Skip onboarding and pre-accept the project trust dialog for the code directory
+COPY claude.json /home/claude/.claude.json
+
+# Permission mode, sandbox, and plugin configuration
+RUN mkdir -p /home/claude/.claude
+COPY settings.json /home/claude/.claude/settings.json
+
+# =============================================================================
+# Rust
+# =============================================================================
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    --default-toolchain stable \
+    --component rust-analyzer \
+    --component rust-src \
+    --component clippy \
+    --component rustfmt
+
+ENV PATH="/home/claude/.cargo/bin:${PATH}"
+
+# Shared target directory keeps build artifacts out of the project volume
+ENV CARGO_TARGET_DIR="/home/claude/cargo-target"
+
+# =============================================================================
+# Python
+# =============================================================================
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# uv also installs to ~/.local/bin (already in PATH above)
+# Use container-local directories to avoid conflicts with host macOS packages
+ENV UV_PROJECT_ENVIRONMENT="/home/claude/.venv"
+ENV UV_CACHE_DIR="/home/claude/.cache/uv"
+
+RUN uv tool install basedpyright
+
+# The official pyright-lsp plugin looks for pyright-langserver; basedpyright is
+# protocol-compatible so a symlink is enough to satisfy the binary requirement.
+RUN ln -s /home/claude/.local/bin/basedpyright-langserver \
+    /home/claude/.local/bin/pyright-langserver
+
+# =============================================================================
+# Workspace
+# =============================================================================
+
+COPY CLAUDE.md /home/claude/CLAUDE.md
+
+WORKDIR /home/claude
+ENTRYPOINT ["claude"]
