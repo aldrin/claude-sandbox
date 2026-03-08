@@ -77,6 +77,7 @@ fn cmd_init(force: bool) -> Result<()> {
 
 fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
     check_container_available()?;
+
     debug!("reading keychain service: {}", KEYCHAIN_SERVICE);
     let json_str = exec_output_quiet(
         "security",
@@ -145,12 +146,12 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
     fs::create_dir_all(sandbox_dir).context("failed to create .claude-sandbox directory")?;
 
     for (name, content) in [
-        ("Containerfile", include_str!("../Containerfile")),
-        ("claude.json", include_str!("../claude.json")),
-        ("settings.json", include_str!("../settings.json")),
-        ("CLAUDE.md", include_str!("../CLAUDE.md")),
-        (".gitconfig", include_str!("../.gitconfig")),
-        ("sandbox-test.sh", include_str!("../sandbox-test.sh")),
+        ("Containerfile", include_str!("../assets/Containerfile")),
+        ("claude.json", include_str!("../assets/claude.json")),
+        ("settings.json", include_str!("../assets/settings.json")),
+        ("CLAUDE.md", include_str!("../assets/CLAUDE.md")),
+        (".gitconfig", include_str!("../assets/.gitconfig")),
+        ("sandbox-test.sh", include_str!("../assets/sandbox-test.sh")),
     ] {
         fs::write(sandbox_dir.join(name), content)
             .with_context(|| format!("failed to write .claude-sandbox/{name}"))?;
@@ -182,7 +183,14 @@ fn cmd_build() -> Result<()> {
     info!("Building image '{}'...", SANDBOX_IMAGE);
 
     let status = Command::new("container")
-        .args(["build", "-t", SANDBOX_IMAGE, "-f", containerfile_str, sandbox_str])
+        .args([
+            "build",
+            "-t",
+            SANDBOX_IMAGE,
+            "-f",
+            containerfile_str,
+            sandbox_str,
+        ])
         .status()
         .context("failed to execute: container")?;
 
@@ -193,6 +201,8 @@ fn cmd_build() -> Result<()> {
     info!("Image '{}' built successfully", SANDBOX_IMAGE);
     Ok(())
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 fn check_container_available() -> Result<()> {
     debug!("checking container CLI availability");
@@ -240,7 +250,7 @@ mod tests {
         init_sandbox(&sandbox, true).unwrap();
         assert_eq!(
             fs::read_to_string(sandbox.join("Containerfile")).unwrap(),
-            include_str!("../Containerfile")
+            include_str!("../assets/Containerfile")
         );
     }
 }

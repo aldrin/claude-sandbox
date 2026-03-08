@@ -7,9 +7,9 @@ mounted, so it has the access it needs and nothing more.
 
 It gives you a simple workflow to initialize, build, and run a container with the latest Claude Code
 pre-installed, sandboxed, and ready to work on your project. Under the hood, it uses [Apple
-container VMs][containers] for isolation, Claude Code's built-in [sandbox mode][sandbox] to confine
-shell commands within the container, and [acceptEdits][permissions] mode so Claude can edit files
-without prompting you.
+container VMs][containers] for isolation, Claude Code's built-in [sandbox mode][sandbox] to confine shell commands
+within the container, and [acceptEdits][permissions] mode so Claude can edit files without
+prompting you.
 
 ```bash
 cargo install --git https://github.com/aldrin/claude-sandbox.git
@@ -90,6 +90,29 @@ that, `run` is all you need.
    └ Cleaned 1 stale lock(s)
    └ No active version locks
   ```
+
+### What's in the container
+
+The default `Containerfile` includes:
+
+- **Rust** — stable toolchain with `rust-analyzer`, `clippy`, `rustfmt`, and `rust-src`
+- **Python** — `uv` for package management, `basedpyright` for type checking
+- **DuckDB** — for data analysis; prefer it over loading data into Python when querying
+  files, CSVs, Parquet, or JSON
+
+Edit the `Containerfile` to add or remove tooling for your project.
+
+### Settings
+
+`settings.json` configures Claude Code's permission mode, sandbox, and runtime environment.
+The `env` block contains two groups of variables:
+
+- **Disable Anthropic callbacks** — `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`,
+  `DISABLE_BUG_COMMAND`, `DISABLE_NON_ESSENTIAL_MODEL_CALLS`, and friends turn off
+  usage reporting, error callbacks, and feedback prompts that phone home to Anthropic.
+- **Enable OTEL telemetry** — `CLAUDE_CODE_ENABLE_TELEMETRY` and the `OTEL_*` variables
+  enable OpenTelemetry export for your own observability infrastructure. Remove these if
+  you don't have an OTEL collector configured.
 
 [containers]: https://github.com/apple/containerization
 [sandbox]: https://code.claude.com/docs/en/sandboxing

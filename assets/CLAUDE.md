@@ -1,5 +1,9 @@
 # Sandbox Environment
 
+**At the start of every session: read this entire file before doing any work.**
+This is an ephemeral container — nothing outside `/home/claude/code` persists
+between sessions. All operational knowledge lives here.
+
 Ubuntu container VM. `/home/claude/code` is a persistent volume mount of
 the host project — work there. Everything else in the container is ephemeral.
 Shell is bash. System tools available: `git`, `rg`, `gcc`, `make`.
@@ -9,18 +13,6 @@ Shell is bash. System tools available: `git`, `rg`, `gcc`, `make`.
 Your role is to make code changes. The host user owns the git history and all
 network operations. Focus on reading, editing, building, and testing code within
 the mounted project directory.
-
-## Sandbox restrictions
-
-The network sandbox only allows outbound connections to `index.crates.io` and
-`static.crates.io`. Everything else is blocked at the network layer:
-
-- Arbitrary network tools (`curl`, `wget` to non-whitelisted hosts, `ssh`, `nc`).
-- Package registries: `pip install`, `npm install`, `npx`.
-- Remote git operations: `git push`, `git pull`, `git fetch`, `git clone`.
-
-Local git operations (`git status`, `git diff`, `git log`, `git add`, `git stash`,
-`git remote`) are not restricted by the sandbox. `git commit` is disabled.
 
 ## Committing changes
 
@@ -70,11 +62,29 @@ Binaries are at:
 Never use `./target/` paths. Installed components: `rust-analyzer`, `clippy`,
 `rustfmt`, `rust-src`.
 
+Always run tests with `TMPDIR` overridden — the environment default points to
+a path that doesn't exist:
+
+```
+TMPDIR=/home/claude/tmp CARGO_TARGET_DIR=/home/claude/cargo-target cargo test
+```
+
 ## Python
 
 Use `uv` for all package management (`uv add`, `uv run`, `uv sync`). Project
 virtual environment: `/home/claude/.venv`. `basedpyright` provides type checking
 and is available as `pyright-langserver` for the LSP plugin.
+
+## DuckDB
+
+DuckDB is available as `duckdb`. Use it for all data analysis tasks: querying CSV,
+Parquet, JSON, or other data files. Prefer DuckDB over loading data into Python
+with pandas or similar — it is faster and requires no dependencies.
+
+```bash
+duckdb -c "SELECT * FROM 'data.parquet' LIMIT 10"
+duckdb -c "SELECT * FROM read_csv('file.csv') WHERE ..."
+```
 
 ## Temp files
 

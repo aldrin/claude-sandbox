@@ -68,8 +68,6 @@ EOF
 section "Container network — all outbound blocked"
 # =============================================================================
 # The container has no outbound network access from a direct shell.
-# The crates.io whitelist only applies to commands run via Claude Code's
-# Bash tool, not to processes launched directly in the container.
 
 expect_blocked "pypi.org:443"            tcp_reachable pypi.org 443
 expect_blocked "registry.npmjs.org:443"  tcp_reachable registry.npmjs.org 443
@@ -77,8 +75,6 @@ expect_blocked "github.com:443"          tcp_reachable github.com 443
 expect_blocked "github.com:22 (SSH)"     tcp_reachable github.com 22
 expect_blocked "index.crates.io:443"     tcp_reachable index.crates.io 443
 expect_blocked "static.crates.io:443"    tcp_reachable static.crates.io 443
-
-note "crates.io IS reachable when Claude runs cargo/curl via the Bash tool (tool-layer whitelist)"
 
 
 # =============================================================================
@@ -135,13 +131,9 @@ info "ALLOWED (auto, no prompt):  Bash commands          [autoAllowBashIfSandbox
 info "ALLOWED (auto, no prompt):  file Read/Edit/Write   [defaultMode=acceptEdits]"
 info "ALLOWED (auto, no prompt):  WebSearch              [explicit allow list]"
 info "ALLOWED (auto, no prompt):  WebFetch *.crates.io   [explicit allow list]"
-info "REQUEST_PERMISSION:         WebFetch other domains  [not in allow or deny]"
-info "REQUEST_PERMISSION:         MCP tools (non-AWS doc) [not in allow or deny]"
+info "REQUEST_PERMISSION:         WebFetch other domains [not in allow or deny]"
+info "REQUEST_PERMISSION:         MCP tools              [not in allow or deny]"
 info "DENIED (auto, no prompt):   nothing                [deny list is empty]"
-info "NOTE: ~/.claude/settings.local.json is writable at OS level but protected"
-info "      by Claude Code's tool layer (denyWithinAllow) — not testable from shell"
-echo
-note "deny list was removed — it had no effect while autoAllowBashIfSandboxed=true"
 
 
 # =============================================================================

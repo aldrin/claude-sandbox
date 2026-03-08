@@ -39,22 +39,13 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Claude Code installs to ~/.local/bin; set PATH now so later steps can use it
 ENV PATH="/home/claude/.local/bin:${PATH}"
 
-# Enable LSP tool support
-ENV ENABLE_LSP_TOOL=1
-# Updates don't persist in ephemeral containers; disable to avoid wasted downloads
-ENV DISABLE_AUTOUPDATER=1
-# Allow plugin marketplace to function even though Claude Code auto-updates are off
-ENV FORCE_AUTOUPDATE_PLUGINS=true
-# No point prompting for feedback at the end of an ephemeral session
-ENV CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 # Ensure 256-color support; not always inherited from the host terminal
 ENV TERM=xterm-256color
 ENV EDITOR=emacs
 
 # Temp directory: bubblewrap mounts a fresh empty tmpfs at /tmp so the default
-# /tmp/claude/ path never exists. Redirect Claude Code's own temp dir and the
-# shell TMPDIR into the sandbox-writable home directory.
-ENV CLAUDE_CODE_TMPDIR="/home/claude/tmp"
+# /tmp/claude/ path never exists. Redirect shell TMPDIR into the sandbox-writable
+# home directory. CLAUDE_CODE_TMPDIR is set via settings.json.
 ENV TMPDIR="/home/claude/tmp"
 RUN mkdir -p /home/claude/tmp
 
@@ -98,6 +89,12 @@ RUN uv tool install basedpyright
 # protocol-compatible so a symlink is enough to satisfy the binary requirement.
 RUN ln -s /home/claude/.local/bin/basedpyright-langserver \
     /home/claude/.local/bin/pyright-langserver
+
+# =============================================================================
+# DuckDB
+# =============================================================================
+
+RUN curl https://install.duckdb.org | sh
 
 # =============================================================================
 # Workspace
