@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "mcp__aws__aws___read_documentation",
+      "mcp__aws__aws___search_documentation",
+      "WebSearch",
+      "WebFetch(domain:index.crates.io)",
+      "WebFetch(domain:static.crates.io)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "spinnerTipsEnabled": false
+}

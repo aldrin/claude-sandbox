@@ -25,7 +25,7 @@ with a container image definition and Claude configuration, and `build` builds t
 that, `run` is all you need.
 
 - **`init`** creates a `.claude-sandbox/` directory in your project with a `Containerfile` defining
-  the container image (Alpine Linux with Claude Code and your developer tooling), default settings
+  the container image (Ubuntu 24.04 with Claude Code and your developer tooling), default settings
   that enable sandbox mode and `acceptEdits` permissions, and a `CLAUDE.md` to orient Claude Code
   when it runs in the container. Edit the `Containerfile` to add language toolchains or tools your
   project needs, and `settings.json` to adjust Claude's permissions.
@@ -62,7 +62,7 @@ that, `run` is all you need.
   ```
       ✻
       |
-     ▟█▙     Claude Code v2.1.50
+     ▟█▙     Claude Code v2.1.71
    ▐▛███▜▌   Sonnet 4.6 · Claude API
   ▝▜█████▛▘  /home/claude
     ▘▘ ▝▝
@@ -70,17 +70,17 @@ that, `run` is all you need.
   ❯ /doctor
 
    Diagnostics
-   └ Currently running: native (2.1.50)
-   └ Path: /home/claude/.local/share/claude/versions/2.1.50
-   └ Invoked: /home/claude/.local/share/claude/versions/2.1.50
+   └ Currently running: native (2.1.71)
+   └ Path: /home/claude/.local/share/claude/versions/2.1.71
+   └ Invoked: /home/claude/.local/share/claude/versions/2.1.71
    └ Config install method: native
-   └ Search: OK (rg)
+   └ Search: OK (bundled)
 
    Updates
    └ Auto-updates: disabled (DISABLE_AUTOUPDATER set)
    └ Auto-update channel: latest
-   └ Stable version: 2.1.39
-   └ Latest version: 2.1.50
+   └ Stable version: 2.1.58
+   └ Latest version: 2.1.71
 
    Sandbox
    └ Status: Available (with warnings)

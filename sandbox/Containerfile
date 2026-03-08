@@ -2,28 +2,33 @@
 # Provides a complete development environment for working with Claude Code,
 # including Rust toolchain and Python tools.
 
-FROM alpine:3.19
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 # Install system-level dependencies for all sections below.
-# These are grouped by purpose but installed together to minimize layers.
 #   Base:     curl, git, ca-certificates, bash
-#   Claude:   ripgrep (Grep tool), libgcc + libstdc++ (required on Alpine/musl)
-#   Sandbox:  bubblewrap + socat (bash isolation), libcap
-#   Rust:     build-base, pkgconfig, openssl-dev
-#   Python:   python3, py3-pip, python3-dev
-RUN apk add --no-cache \
+#   Claude:   ripgrep
+#   Sandbox:  bubblewrap + socat (bash isolation)
+#   Rust:     build-essential, pkg-config, libssl-dev
+#   Python:   python3, python3-dev
+#   Editor:   emacs-nox
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git ca-certificates bash \
-    ripgrep libgcc libstdc++ \
-    bubblewrap socat libcap \
-    build-base pkgconfig openssl-dev \
-    python3 py3-pip python3-dev
+    ripgrep \
+    bubblewrap socat \
+    build-essential pkg-config libssl-dev \
+    python3 python3-dev \
+    emacs-nox \
+    && rm -rf /var/lib/apt/lists/*
 
 # Fix bubblewrap: setuid root so it works inside the container VM
 RUN chmod u+s /usr/bin/bwrap
 
 # Create non-root user
-RUN adduser -D -h /home/claude -s /bin/bash claude
+RUN useradd -m -d /home/claude -s /bin/bash claude
 USER claude
+RUN echo 'export EDITOR=emacs' >> /home/claude/.bashrc
 
 # =============================================================================
 # Claude Code
@@ -34,8 +39,6 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Claude Code installs to ~/.local/bin; set PATH now so later steps can use it
 ENV PATH="/home/claude/.local/bin:${PATH}"
 
-# Use system ripgrep: the bundled binary is glibc-compiled and fails on Alpine
-ENV USE_BUILTIN_RIPGREP=0
 # Enable LSP tool support
 ENV ENABLE_LSP_TOOL=1
 # Updates don't persist in ephemeral containers; disable to avoid wasted downloads
@@ -46,6 +49,7 @@ ENV FORCE_AUTOUPDATE_PLUGINS=true
 ENV CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 # Ensure 256-color support; not always inherited from the host terminal
 ENV TERM=xterm-256color
+ENV EDITOR=emacs
 
 # Temp directory: bubblewrap mounts a fresh empty tmpfs at /tmp so the default
 # /tmp/claude/ path never exists. Redirect Claude Code's own temp dir and the
@@ -55,11 +59,11 @@ ENV TMPDIR="/home/claude/tmp"
 RUN mkdir -p /home/claude/tmp
 
 # Skip onboarding and pre-accept the project trust dialog for the code directory
-COPY claude.json /home/claude/.claude.json
+COPY --chown=claude:claude claude.json /home/claude/.claude.json
 
 # Permission mode, sandbox, and plugin configuration
 RUN mkdir -p /home/claude/.claude
-COPY settings.json /home/claude/.claude/settings.json
+COPY --chown=claude:claude settings.json /home/claude/.claude/settings.json
 
 # =============================================================================
 # Rust
@@ -99,7 +103,9 @@ RUN ln -s /home/claude/.local/bin/basedpyright-langserver \
 # Workspace
 # =============================================================================
 
-COPY CLAUDE.md /home/claude/CLAUDE.md
+COPY --chown=claude:claude CLAUDE.md /home/claude/CLAUDE.md
+COPY --chown=claude:claude .gitconfig /home/claude/.gitconfig
+COPY --chown=claude:claude sandbox-test.sh /home/claude/sandbox-test.sh
 
 WORKDIR /home/claude
 ENTRYPOINT ["claude"]

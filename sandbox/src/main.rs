@@ -18,7 +18,7 @@ use clap::Parser;
 use log::{debug, info};
 
 const SANDBOX_DIR: &str = ".claude-sandbox";
-const DEFAULT_IMAGE_NAME: &str = "claude-sandbox";
+const SANDBOX_IMAGE: &str = "claude-sandbox";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
 #[derive(Parser)]
@@ -41,7 +41,7 @@ enum Commands {
         force: bool,
     },
 
-    /// Build container image from Containerfile in current directory
+    /// Build the sandbox container image
     Build,
 
     /// Run Claude Code in the container
@@ -121,7 +121,7 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
         cpus.to_string(),
         "-v".to_string(),
         volume,
-        DEFAULT_IMAGE_NAME.to_string(),
+        SANDBOX_IMAGE.to_string(),
     ];
 
     debug!(
@@ -145,10 +145,12 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
     fs::create_dir_all(sandbox_dir).context("failed to create .claude-sandbox directory")?;
 
     for (name, content) in [
-        ("Containerfile", include_str!("sandbox/Containerfile")),
-        ("claude.json", include_str!("sandbox/claude.json")),
-        ("settings.json", include_str!("sandbox/settings.json")),
-        ("CLAUDE.md", include_str!("sandbox/CLAUDE.md")),
+        ("Containerfile", include_str!("../Containerfile")),
+        ("claude.json", include_str!("../claude.json")),
+        ("settings.json", include_str!("../settings.json")),
+        ("CLAUDE.md", include_str!("../CLAUDE.md")),
+        (".gitconfig", include_str!("../.gitconfig")),
+        ("sandbox-test.sh", include_str!("../sandbox-test.sh")),
     ] {
         fs::write(sandbox_dir.join(name), content)
             .with_context(|| format!("failed to write .claude-sandbox/{name}"))?;
@@ -160,6 +162,7 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
 
 fn cmd_build() -> Result<()> {
     check_container_available()?;
+
     let cwd = env::current_dir().context("failed to get current directory")?;
     let sandbox_dir = cwd.join(SANDBOX_DIR);
     let containerfile_path = sandbox_dir.join("Containerfile");
@@ -176,28 +179,18 @@ fn cmd_build() -> Result<()> {
         .context("invalid Containerfile path")?;
     let sandbox_str = sandbox_dir.to_str().context("invalid sandbox path")?;
 
-    debug!(
-        "building image '{}' from {}",
-        DEFAULT_IMAGE_NAME, containerfile_str
-    );
+    info!("Building image '{}'...", SANDBOX_IMAGE);
 
     let status = Command::new("container")
-        .args([
-            "build",
-            "-t",
-            DEFAULT_IMAGE_NAME,
-            "-f",
-            containerfile_str,
-            sandbox_str,
-        ])
+        .args(["build", "-t", SANDBOX_IMAGE, "-f", containerfile_str, sandbox_str])
         .status()
         .context("failed to execute: container")?;
 
     if !status.success() {
-        bail!("container build failed");
+        bail!("container build failed for '{}'", SANDBOX_IMAGE);
     }
 
-    info!("Image '{}' built successfully", DEFAULT_IMAGE_NAME);
+    info!("Image '{}' built successfully", SANDBOX_IMAGE);
     Ok(())
 }
 
@@ -227,6 +220,7 @@ mod tests {
         assert!(sandbox.join("claude.json").exists());
         assert!(sandbox.join("settings.json").exists());
         assert!(sandbox.join("CLAUDE.md").exists());
+        assert!(sandbox.join("sandbox-test.sh").exists());
     }
 
     #[test]
@@ -246,7 +240,7 @@ mod tests {
         init_sandbox(&sandbox, true).unwrap();
         assert_eq!(
             fs::read_to_string(sandbox.join("Containerfile")).unwrap(),
-            include_str!("sandbox/Containerfile")
+            include_str!("../Containerfile")
         );
     }
 }
