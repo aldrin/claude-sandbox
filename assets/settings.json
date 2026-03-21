@@ -7,49 +7,41 @@
       "WebSearch",
       "WebFetch(domain:index.crates.io)",
       "WebFetch(domain:static.crates.io)",
-      "WebFetch(domain:192.168.64.1)"
+      "WebFetch(domain:192.168.64.1)",
+      "Bash(cargo:*)"
     ]
   },
+
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true
   },
-  "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "PreToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }]
-      }
-    ],
-    "PostToolUse": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "Stop": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "SubagentStart": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "SubagentStop": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "http", "url": "__HOOKS_ENDPOINT__", "timeout": 5 }] }]
-  },
+
   "spinnerTipsEnabled": false,
+
   "env": {
-    "ENABLE_LSP_TOOL": "1",
-    "DISABLE_AUTOUPDATER": "1",
-    "FORCE_AUTOUPDATE_PLUGINS": "true",
-    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
-    "DISABLE_FEEDBACK_SURVEY": "1",
-    "DISABLE_TELEMETRY": "1",
-    "DISABLE_ERROR_REPORTING": "1",
-    "DISABLE_BUG_COMMAND": "1",
-    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
-    "DISABLE_COST_WARNINGS": "1",
-    "DISABLE_INSTALLATION_CHECKS": "1",
-    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
+    "COLUMNS": "200",
+    "LINES": "50",
+    "LANG": "en_US.UTF-8",
+    "COLORTERM": "truecolor",
+
+    "TMPDIR": "/home/claude/tmp",
+    "CARGO_TARGET_DIR": "/home/claude/cargo-target",
+
     "CLAUDE_CODE_TMPDIR": "/home/claude/tmp",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-    "OTEL_METRICS_EXPORTER": "otlp",
-    "OTEL_LOGS_EXPORTER": "otlp",
-    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-    "OTEL_LOG_TOOL_DETAILS": "1",
-    "OTEL_METRICS_INCLUDE_VERSION": "true"
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_DISABLE_CRON": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+
+    "ENABLE_LSP_TOOL": "1",
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+    "FORCE_AUTOUPDATE_PLUGINS": "true",
+
+    "DISABLE_COST_WARNINGS": "1",
+    "DISABLE_INSTALLATION_CHECKS": "1"
   }
 }

@@ -24,20 +24,33 @@ inside it. There's a one-time setup per project: `init` creates a `.claude-sandb
 with a container image definition and Claude configuration, and `build` builds the image. After
 that, `run` is all you need.
 
+Each project gets its own container image. By default, the name is `claude-sandbox-<dirname>`,
+derived from the current directory (lowercased, non-alphanumeric characters replaced with `-`).
+You can override this with `--name` during init. The chosen name is saved in
+`.claude-sandbox/image-name` and used automatically by `build` and `run`. This means you can
+run multiple sandboxes simultaneously for different projects without conflicts.
+
 - **`init`** creates a `.claude-sandbox/` directory in your project with a `Containerfile` defining
   the container image (Ubuntu 24.04 with Claude Code and your developer tooling), default settings
-  that enable sandbox mode and `acceptEdits` permissions, and a `CLAUDE.md` to orient Claude Code
-  when it runs in the container. Edit the `Containerfile` to add language toolchains or tools your
-  project needs, and `settings.json` to adjust Claude's permissions.
+  that enable sandbox mode and `acceptEdits` permissions, a `CLAUDE.md` to orient Claude Code
+  when it runs in the container, and git hooks that block commits from inside the sandbox so the
+  host user retains ownership of the git history. Edit the `Containerfile` to add language
+  toolchains or tools your project needs, and `settings.json` to adjust Claude's permissions.
+
+  Use `--name` to choose a custom image name:
+
+  ```bash
+  claude-sandbox init --name my-project-sandbox
+  ```
 
   <p align="center"><img src="init.svg"/></p>
 
-- **`build`** invokes the container CLI to build the image from `.claude-sandbox/Containerfile`. Make
-  sure the Apple container system is running first. If not, start it with `container system start`.
-  The build command runs:
+- **`build`** invokes the container CLI to build the image from `.claude-sandbox/Containerfile`
+  using the name chosen during init. Make sure the Apple container system is running first. If
+  not, start it with `container system start`. For a project in `~/myapp`, the build command runs:
 
   ```bash
-  container build -t claude-sandbox -f .claude-sandbox/Containerfile .claude-sandbox
+  container build -t claude-sandbox-myapp -f .claude-sandbox/Containerfile .claude-sandbox
   ```
 
   This pulls in Claude Code and your developer tooling, so it takes a few minutes the first time.
@@ -52,14 +65,6 @@ that, `run` is all you need.
 
   By default, the container gets 2 CPUs and 4 GB of memory. Use `--cpus` and `--memory` to adjust
   (both accept values between 2 and 8). The container is destroyed on exit.
-
-  Telemetry is forwarded to `http://192.168.64.1:4318` by default, which is the vmnet gateway
-  on the Mac. If you run `claude-monitor` on your Mac, bind it to `0.0.0.0` so the container
-  can reach it at this address. Override with `--otel-endpoint` if needed. To disable telemetry,
-  remove the `CLAUDE_CODE_ENABLE_TELEMETRY` and `OTEL_*` entries from `.claude-sandbox/settings.json`.
-
-  Claude Code hooks are forwarded to `http://192.168.64.1:4319/hooks` by default. If you run
-  a hook interceptor on your Mac, bind it to `0.0.0.0:4319`. Override with `--hooks-endpoint`.
 
   > **Note:** The token never appears in the command line on your Mac, but is visible via
   > `container inspect` and in the environment of any shell running inside the container.
@@ -113,14 +118,16 @@ Edit the `Containerfile` to add or remove tooling for your project.
 ### Settings
 
 `settings.json` configures Claude Code's permission mode, sandbox, and runtime environment.
-The `env` block contains two groups of variables:
+The `env` block contains variables grouped by purpose:
 
-- **Disable Anthropic callbacks** — `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`,
-  `DISABLE_BUG_COMMAND`, `DISABLE_NON_ESSENTIAL_MODEL_CALLS`, and friends turn off
-  usage reporting, error callbacks, and feedback prompts that phone home to Anthropic.
-- **Enable OTEL telemetry** — `CLAUDE_CODE_ENABLE_TELEMETRY` and the `OTEL_*` variables
-  enable OpenTelemetry export for your own observability infrastructure. Remove these if
-  you don't have an OTEL collector configured.
+- **Terminal** — `COLUMNS`, `LINES`, `LANG`, and `COLORTERM` ensure proper terminal behavior
+  inside the container.
+- **Paths** — `TMPDIR` and `CARGO_TARGET_DIR` are set so Claude doesn't need to prefix every
+  command with environment variables.
+- **Claude Code** — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turns off usage reporting, error
+  callbacks, and feedback prompts. `CLAUDE_CODE_DISABLE_CRON`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
+  and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` disable features that don't apply in an ephemeral
+  container.
 
 [containers]: https://github.com/apple/container
 [sandbox]: https://code.claude.com/docs/en/sandboxing

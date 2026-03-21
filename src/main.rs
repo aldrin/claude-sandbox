@@ -18,7 +18,8 @@ use clap::Parser;
 use log::{debug, info};
 
 const SANDBOX_DIR: &str = ".claude-sandbox";
-const SANDBOX_IMAGE: &str = "claude-sandbox";
+const IMAGE_NAME_FILE: &str = "image-name";
+const IMAGE_PREFIX: &str = "claude-sandbox";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
 #[derive(Parser)]
@@ -39,6 +40,10 @@ enum Commands {
         /// Overwrite existing files in .claude-sandbox/
         #[arg(long)]
         force: bool,
+
+        /// Container image name (default: claude-sandbox-<dirname>)
+        #[arg(long)]
+        name: Option<String>,
     },
 
     /// Build the sandbox container image
@@ -53,14 +58,6 @@ enum Commands {
         /// Memory in GB (2-8)
         #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u8).range(2..=8))]
         memory: u8,
-
-        /// OTLP endpoint for telemetry (defaults to vmnet gateway 192.168.64.1:4318)
-        #[arg(long, default_value = "http://192.168.64.1:4318")]
-        otel_endpoint: String,
-
-        /// Hook interceptor endpoint (defaults to vmnet gateway 192.168.64.1:4319)
-        #[arg(long, default_value = "http://192.168.64.1:4319/hooks")]
-        hooks_endpoint: String,
     },
 }
 
@@ -70,31 +67,39 @@ fn main() -> Result<()> {
         .init();
 
     match Cli::parse().command {
-        Commands::Init { force } => cmd_init(force),
+        Commands::Init { force, name } => cmd_init(force, name.as_deref()),
         Commands::Build => cmd_build(),
-        Commands::Run { cpus, memory, otel_endpoint, hooks_endpoint } => cmd_run(cpus, memory, &otel_endpoint, &hooks_endpoint),
+        Commands::Run { cpus, memory } => cmd_run(cpus, memory),
     }
 }
 
-fn cmd_init(force: bool) -> Result<()> {
-    let sandbox_dir = env::current_dir()
-        .context("failed to get current directory")?
-        .join(SANDBOX_DIR);
-    init_sandbox(&sandbox_dir, force)
+fn cmd_init(force: bool, name: Option<&str>) -> Result<()> {
+    let cwd = env::current_dir().context("failed to get current directory")?;
+    let sandbox_dir = cwd.join(SANDBOX_DIR);
+
+    let image = match name {
+        Some(n) => n.to_string(),
+        None => default_image_name(&cwd)?,
+    };
+
+    init_sandbox(&sandbox_dir, force, &image)
 }
 
-fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> Result<()> {
+fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
     check_container_available()?;
 
-    // Template settings.json with the hooks endpoint URL
-    let settings_template = include_str!("../assets/settings.json");
-    let settings_content = settings_template.replace("__HOOKS_ENDPOINT__", hooks_endpoint);
-    let settings_path = env::current_dir()
-        .context("failed to determine working directory")?
-        .join(SANDBOX_DIR)
-        .join("settings.runtime.json");
-    fs::write(&settings_path, &settings_content)
-        .context("failed to write settings.runtime.json")?;
+    let cwd = env::current_dir().context("failed to determine working directory")?;
+    let sandbox_dir = cwd.join(SANDBOX_DIR);
+    let image = read_image_name(&sandbox_dir)?;
+    check_image_built(&image)?;
+
+    let settings_path = sandbox_dir.join("settings.json");
+    if !settings_path.exists() {
+        bail!(
+            ".claude-sandbox/settings.json not found.\n\
+             Run 'claude-sandbox init' first to initialize the workspace."
+        );
+    }
 
     debug!("reading keychain service: {}", KEYCHAIN_SERVICE);
     let json_str = exec_output_quiet(
@@ -119,9 +124,7 @@ fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> R
         .map(String::from)
         .context("No accessToken found in keychain credentials")?;
 
-    debug!("running with cpus={}, memory={}G", cpus, memory);
-
-    let cwd = env::current_dir().context("failed to determine working directory")?;
+    debug!("running image '{}' with cpus={}, memory={}G", image, cpus, memory);
 
     let code_volume = format!("{}:/home/claude/code", cwd.display());
     let settings_volume = format!(
@@ -135,8 +138,6 @@ fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> R
         "-it".to_string(),
         "-e".to_string(),
         "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
-        "-e".to_string(),
-        "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
         "-m".to_string(),
         format!("{}G", memory),
         "-c".to_string(),
@@ -145,7 +146,7 @@ fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> R
         code_volume,
         "-v".to_string(),
         settings_volume,
-        SANDBOX_IMAGE.to_string(),
+        image,
     ];
 
     debug!(
@@ -156,18 +157,20 @@ fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> R
     let err = Command::new("container")
         .args(&args)
         .env("CLAUDE_CODE_OAUTH_TOKEN", token)
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", otel_endpoint)
         .exec();
 
     Err(anyhow::anyhow!(err).context("failed to exec container run"))
 }
 
-fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
+fn init_sandbox(sandbox_dir: &Path, force: bool, image: &str) -> Result<()> {
     if !force && sandbox_dir.join("Containerfile").exists() {
         bail!(".claude-sandbox already initialized. Use --force to overwrite.");
     }
 
     fs::create_dir_all(sandbox_dir).context("failed to create .claude-sandbox directory")?;
+
+    fs::write(sandbox_dir.join(IMAGE_NAME_FILE), format!("{}\n", image))
+        .context("failed to write .claude-sandbox/image-name")?;
 
     for (name, content) in [
         ("Containerfile", include_str!("../assets/Containerfile")),
@@ -191,7 +194,7 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
             .with_context(|| format!("failed to write .claude-sandbox/git-hooks/{name}"))?;
     }
 
-    info!("Initialized workspace in .claude-sandbox/");
+    info!("Initialized workspace in .claude-sandbox/ (image: {})", image);
     Ok(())
 }
 
@@ -200,6 +203,7 @@ fn cmd_build() -> Result<()> {
 
     let cwd = env::current_dir().context("failed to get current directory")?;
     let sandbox_dir = cwd.join(SANDBOX_DIR);
+    let image = read_image_name(&sandbox_dir)?;
 
     if !sandbox_dir.join("Containerfile").exists() {
         bail!(
@@ -214,29 +218,76 @@ fn cmd_build() -> Result<()> {
         .to_str()
         .context("invalid Containerfile path")?;
 
-    info!("Building image '{}'...", SANDBOX_IMAGE);
+    info!("Building image '{}'...", image);
 
     let status = Command::new("container")
-        .args(["build", "-t", SANDBOX_IMAGE, "-f", containerfile_str, sandbox_str])
+        .args(["build", "-t", &image, "-f", containerfile_str, sandbox_str])
         .status()
         .context("failed to execute: container")?;
 
     if !status.success() {
-        bail!("container build failed for '{}'", SANDBOX_IMAGE);
+        bail!("container build failed for '{}'", image);
     }
 
-    info!("Image '{}' built successfully", SANDBOX_IMAGE);
+    info!("Image '{}' built successfully", image);
     Ok(())
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+fn default_image_name(cwd: &Path) -> Result<String> {
+    let dir_name = cwd
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("failed to determine project directory name")?;
+    let sanitized: String = dir_name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .collect();
+    Ok(format!("{}-{}", IMAGE_PREFIX, sanitized))
+}
+
+fn read_image_name(sandbox_dir: &Path) -> Result<String> {
+    let path = sandbox_dir.join(IMAGE_NAME_FILE);
+    let content = fs::read_to_string(&path).with_context(|| {
+        format!(
+            ".claude-sandbox/{} not found.\n\
+             Run 'claude-sandbox init' first to initialize the workspace.",
+            IMAGE_NAME_FILE
+        )
+    })?;
+    let name = content.trim().to_string();
+    if name.is_empty() {
+        bail!(".claude-sandbox/{} is empty", IMAGE_NAME_FILE);
+    }
+    Ok(name)
+}
+
 fn check_container_available() -> Result<()> {
     debug!("checking container CLI availability");
     if exec_output_quiet("container", &["--version"]).is_none() {
-        bail!("Apple container CLI not found.");
+        bail!(
+            "Apple container CLI not found.\n\n\
+             Install it from: https://developer.apple.com/documentation/virtualization"
+        );
     }
     debug!("container CLI available");
+    Ok(())
+}
+
+fn check_image_built(image: &str) -> Result<()> {
+    debug!("checking image '{}' exists locally", image);
+    let exists = exec_output_quiet("container", &["image", "inspect", image])
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !exists {
+        bail!(
+            "Image '{}' not found locally.\n\n\
+             Run 'claude-sandbox build' to build it first.",
+            image
+        );
+    }
     Ok(())
 }
 
@@ -252,7 +303,7 @@ mod tests {
     fn test_init_creates_files() {
         let dir = tempfile::tempdir().unwrap();
         let sandbox = dir.path().join(".claude-sandbox");
-        init_sandbox(&sandbox, false).unwrap();
+        init_sandbox(&sandbox, false, "claude-sandbox-test").unwrap();
         assert!(sandbox.join("Containerfile").exists());
         assert!(sandbox.join("claude.json").exists());
         assert!(sandbox.join("settings.json").exists());
@@ -263,23 +314,60 @@ mod tests {
     }
 
     #[test]
+    fn test_init_writes_image_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "claude-sandbox-myapp").unwrap();
+        let name = read_image_name(&sandbox).unwrap();
+        assert_eq!(name, "claude-sandbox-myapp");
+    }
+
+    #[test]
+    fn test_init_custom_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "my-custom-image").unwrap();
+        let name = read_image_name(&sandbox).unwrap();
+        assert_eq!(name, "my-custom-image");
+    }
+
+    #[test]
+    fn test_default_image_name() {
+        let name = default_image_name(Path::new("/Users/me/my-project")).unwrap();
+        assert_eq!(name, "claude-sandbox-my-project");
+    }
+
+    #[test]
+    fn test_default_image_name_sanitizes() {
+        let name = default_image_name(Path::new("/Users/me/My Project_v2")).unwrap();
+        assert_eq!(name, "claude-sandbox-my-project-v2");
+    }
+
+    #[test]
     fn test_init_refuses_if_already_initialized() {
         let dir = tempfile::tempdir().unwrap();
         let sandbox = dir.path().join(".claude-sandbox");
-        init_sandbox(&sandbox, false).unwrap();
-        assert!(init_sandbox(&sandbox, false).is_err());
+        init_sandbox(&sandbox, false, "claude-sandbox-test").unwrap();
+        assert!(init_sandbox(&sandbox, false, "claude-sandbox-test").is_err());
     }
 
     #[test]
     fn test_init_force_overwrites() {
         let dir = tempfile::tempdir().unwrap();
         let sandbox = dir.path().join(".claude-sandbox");
-        init_sandbox(&sandbox, false).unwrap();
+        init_sandbox(&sandbox, false, "claude-sandbox-test").unwrap();
         fs::write(sandbox.join("Containerfile"), b"modified").unwrap();
-        init_sandbox(&sandbox, true).unwrap();
+        init_sandbox(&sandbox, true, "claude-sandbox-test").unwrap();
         assert_eq!(
             fs::read_to_string(sandbox.join("Containerfile")).unwrap(),
             include_str!("../assets/Containerfile")
         );
     }
+
+    #[test]
+    fn test_read_image_name_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_image_name(dir.path()).is_err());
+    }
+
 }

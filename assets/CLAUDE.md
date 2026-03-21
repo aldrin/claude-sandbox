@@ -38,55 +38,19 @@ Always ask before adding a new dependency to any project. The user reviews all
 dependencies before they are added. This applies to all package ecosystems:
 Cargo, npm, pip, and any other package manager.
 
-## LSP plugins
-
-Install at the start of each session before doing any other work:
-
-```
-/plugin install rust-analyzer-lsp@claude-plugins-official
-/plugin install pyright-lsp@claude-plugins-official
-```
-
-The required binaries (`rust-analyzer` and `pyright-langserver`) are already
-available in this environment.
-
 ## Rust
-
-`CARGO_TARGET_DIR=/home/claude/cargo-target` — keeps Linux artifacts out of the
-mounted project directory, which may contain macOS binaries from the host.
 
 Binaries are at:
 - debug: `/home/claude/cargo-target/debug/<name>`
 - release: `/home/claude/cargo-target/release/<name>`
 
-Never use `./target/` paths. Installed components: `rust-analyzer`, `clippy`,
-`rustfmt`, `rust-src`.
-
-Always run tests with `TMPDIR` overridden — the environment default points to
-a path that doesn't exist:
-
-```
-TMPDIR=/home/claude/tmp CARGO_TARGET_DIR=/home/claude/cargo-target cargo test
-```
+Never use `./target/` paths — `CARGO_TARGET_DIR` is set automatically.
 
 ## Python
 
-Use `uv` for all package management (`uv add`, `uv run`, `uv sync`). Project
-virtual environment: `/home/claude/.venv`. `basedpyright` provides type checking
-and is available as `pyright-langserver` for the LSP plugin.
+Use `uv` for all package management (`uv add`, `uv run`, `uv sync`).
 
 ## DuckDB
 
-DuckDB is available as `duckdb`. Use it for all data analysis tasks: querying CSV,
-Parquet, JSON, or other data files. Prefer DuckDB over loading data into Python
-with pandas or similar — it is faster and requires no dependencies.
-
-```bash
-duckdb -c "SELECT * FROM 'data.parquet' LIMIT 10"
-duckdb -c "SELECT * FROM read_csv('file.csv') WHERE ..."
-```
-
-## Temp files
-
-Use `$TMPDIR` (`/home/claude/tmp`), not `/tmp` — the bubblewrap sandbox mounts
-a fresh empty tmpfs at `/tmp` with no pre-existing subdirectories.
+Prefer `duckdb` over loading data into Python with pandas or similar for
+querying CSV, Parquet, JSON, or other data files.
