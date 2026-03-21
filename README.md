@@ -53,6 +53,14 @@ that, `run` is all you need.
   By default, the container gets 2 CPUs and 4 GB of memory. Use `--cpus` and `--memory` to adjust
   (both accept values between 2 and 8). The container is destroyed on exit.
 
+  Telemetry is forwarded to `http://192.168.64.1:4318` by default, which is the vmnet gateway
+  on the Mac. If you run `claude-monitor` on your Mac, bind it to `0.0.0.0` so the container
+  can reach it at this address. Override with `--otel-endpoint` if needed. To disable telemetry,
+  remove the `CLAUDE_CODE_ENABLE_TELEMETRY` and `OTEL_*` entries from `.claude-sandbox/settings.json`.
+
+  Claude Code hooks are forwarded to `http://192.168.64.1:4319/hooks` by default. If you run
+  a hook interceptor on your Mac, bind it to `0.0.0.0:4319`. Override with `--hooks-endpoint`.
+
   > **Note:** The token never appears in the command line on your Mac, but is visible via
   > `container inspect` and in the environment of any shell running inside the container.
 
@@ -114,6 +122,6 @@ The `env` block contains two groups of variables:
   enable OpenTelemetry export for your own observability infrastructure. Remove these if
   you don't have an OTEL collector configured.
 
-[containers]: https://github.com/apple/containerization
+[containers]: https://github.com/apple/container
 [sandbox]: https://code.claude.com/docs/en/sandboxing
 [permissions]: https://code.claude.com/docs/en/permissions

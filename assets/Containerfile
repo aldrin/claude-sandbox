@@ -102,6 +102,8 @@ RUN curl https://install.duckdb.org | sh
 
 COPY --chown=claude:claude CLAUDE.md /home/claude/CLAUDE.md
 COPY --chown=claude:claude .gitconfig /home/claude/.gitconfig
+COPY --chown=claude:claude git-hooks/ /home/claude/git-hooks/
+RUN chmod +x /home/claude/git-hooks/*
 COPY --chown=claude:claude sandbox-test.sh /home/claude/sandbox-test.sh
 
 WORKDIR /home/claude

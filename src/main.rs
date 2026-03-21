@@ -4,8 +4,6 @@
 //! - container --version
 //! - container build -t <image> -f <containerfile> <context>
 //! - container run --rm -it -e <env> -m <memory> -c <cpus> -v <volume> <image>
-//! - container run -d --name <name> -v <volume> <image>
-//! - container ls --format json
 //! - security find-generic-password -s <service> -w
 
 use std::env;
@@ -21,8 +19,6 @@ use log::{debug, info};
 
 const SANDBOX_DIR: &str = ".claude-sandbox";
 const SANDBOX_IMAGE: &str = "claude-sandbox";
-const MONITOR_IMAGE: &str = "claude-monitor";
-const MONITOR_CONTAINER: &str = "claude-monitor";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 
 #[derive(Parser)]
@@ -57,6 +53,14 @@ enum Commands {
         /// Memory in GB (2-8)
         #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u8).range(2..=8))]
         memory: u8,
+
+        /// OTLP endpoint for telemetry (defaults to vmnet gateway 192.168.64.1:4318)
+        #[arg(long, default_value = "http://192.168.64.1:4318")]
+        otel_endpoint: String,
+
+        /// Hook interceptor endpoint (defaults to vmnet gateway 192.168.64.1:4319)
+        #[arg(long, default_value = "http://192.168.64.1:4319/hooks")]
+        hooks_endpoint: String,
     },
 }
 
@@ -68,7 +72,7 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Commands::Init { force } => cmd_init(force),
         Commands::Build => cmd_build(),
-        Commands::Run { cpus, memory } => cmd_run(cpus, memory),
+        Commands::Run { cpus, memory, otel_endpoint, hooks_endpoint } => cmd_run(cpus, memory, &otel_endpoint, &hooks_endpoint),
     }
 }
 
@@ -79,10 +83,18 @@ fn cmd_init(force: bool) -> Result<()> {
     init_sandbox(&sandbox_dir, force)
 }
 
-fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
+fn cmd_run(cpus: u8, memory: u8, otel_endpoint: &str, hooks_endpoint: &str) -> Result<()> {
     check_container_available()?;
-    let monitor_ip = ensure_monitor_running()?;
-    let otel_endpoint = format!("http://{}:4318", monitor_ip);
+
+    // Template settings.json with the hooks endpoint URL
+    let settings_template = include_str!("../assets/settings.json");
+    let settings_content = settings_template.replace("__HOOKS_ENDPOINT__", hooks_endpoint);
+    let settings_path = env::current_dir()
+        .context("failed to determine working directory")?
+        .join(SANDBOX_DIR)
+        .join("settings.runtime.json");
+    fs::write(&settings_path, &settings_content)
+        .context("failed to write settings.runtime.json")?;
 
     debug!("reading keychain service: {}", KEYCHAIN_SERVICE);
     let json_str = exec_output_quiet(
@@ -109,11 +121,12 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
 
     debug!("running with cpus={}, memory={}G", cpus, memory);
 
-    let volume = format!(
-        "{}:/home/claude/code",
-        env::current_dir()
-            .context("failed to determine working directory")?
-            .display()
+    let cwd = env::current_dir().context("failed to determine working directory")?;
+
+    let code_volume = format!("{}:/home/claude/code", cwd.display());
+    let settings_volume = format!(
+        "{}:/home/claude/.claude/settings.json",
+        settings_path.display()
     );
 
     let args = vec![
@@ -129,7 +142,9 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
         "-c".to_string(),
         cpus.to_string(),
         "-v".to_string(),
-        volume,
+        code_volume,
+        "-v".to_string(),
+        settings_volume,
         SANDBOX_IMAGE.to_string(),
     ];
 
@@ -156,7 +171,6 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
 
     for (name, content) in [
         ("Containerfile", include_str!("../assets/Containerfile")),
-        ("Containerfile.monitor", include_str!("../assets/Containerfile.monitor")),
         ("claude.json", include_str!("../assets/claude.json")),
         ("settings.json", include_str!("../assets/settings.json")),
         ("CLAUDE.md", include_str!("../assets/CLAUDE.md")),
@@ -165,6 +179,16 @@ fn init_sandbox(sandbox_dir: &Path, force: bool) -> Result<()> {
     ] {
         fs::write(sandbox_dir.join(name), content)
             .with_context(|| format!("failed to write .claude-sandbox/{name}"))?;
+    }
+
+    let hooks_dir = sandbox_dir.join("git-hooks");
+    fs::create_dir_all(&hooks_dir).context("failed to create .claude-sandbox/git-hooks")?;
+    for (name, content) in [
+        ("pre-commit", include_str!("../assets/git-hooks/pre-commit")),
+        ("pre-push", include_str!("../assets/git-hooks/pre-push")),
+    ] {
+        fs::write(hooks_dir.join(name), content)
+            .with_context(|| format!("failed to write .claude-sandbox/git-hooks/{name}"))?;
     }
 
     info!("Initialized workspace in .claude-sandbox/");
@@ -185,96 +209,27 @@ fn cmd_build() -> Result<()> {
     }
 
     let sandbox_str = sandbox_dir.to_str().context("invalid sandbox path")?;
+    let containerfile_path = sandbox_dir.join("Containerfile");
+    let containerfile_str = containerfile_path
+        .to_str()
+        .context("invalid Containerfile path")?;
 
-    for (containerfile, image) in [
-        ("Containerfile", SANDBOX_IMAGE),
-        ("Containerfile.monitor", MONITOR_IMAGE),
-    ] {
-        let containerfile_path = sandbox_dir.join(containerfile);
-        let containerfile_str = containerfile_path
-            .to_str()
-            .context("invalid Containerfile path")?;
+    info!("Building image '{}'...", SANDBOX_IMAGE);
 
-        info!("Building image '{}'...", image);
+    let status = Command::new("container")
+        .args(["build", "-t", SANDBOX_IMAGE, "-f", containerfile_str, sandbox_str])
+        .status()
+        .context("failed to execute: container")?;
 
-        let status = Command::new("container")
-            .args(["build", "-t", image, "-f", containerfile_str, sandbox_str])
-            .status()
-            .context("failed to execute: container")?;
-
-        if !status.success() {
-            bail!("container build failed for '{}'", image);
-        }
-
-        info!("Image '{}' built successfully", image);
+    if !status.success() {
+        bail!("container build failed for '{}'", SANDBOX_IMAGE);
     }
 
+    info!("Image '{}' built successfully", SANDBOX_IMAGE);
     Ok(())
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-/// Ensure the monitor container is running, returning its IPv4 address.
-fn ensure_monitor_running() -> Result<String> {
-    if let Some(ip) = monitor_ip() {
-        debug!("monitor container '{}' already running at {}", MONITOR_CONTAINER, ip);
-        return Ok(ip);
-    }
-
-    info!("Starting monitor container '{}'...", MONITOR_CONTAINER);
-
-    let telemetry_dir = env::current_dir()
-        .context("failed to determine working directory")?
-        .join(SANDBOX_DIR)
-        .join("telemetry");
-
-    fs::create_dir_all(&telemetry_dir)
-        .context("failed to create .claude-sandbox/telemetry directory")?;
-
-    let volume = format!(
-        "{}:/home/claude/telemetry",
-        telemetry_dir.display()
-    );
-
-    let status = Command::new("container")
-        .args([
-            "run", "-d",
-            "--name", MONITOR_CONTAINER,
-            "-v", &volume,
-            MONITOR_IMAGE,
-        ])
-        .status()
-        .context("failed to start monitor container")?;
-
-    if !status.success() {
-        bail!(
-            "failed to start monitor container '{}'.\n\
-             Run 'claude-sandbox build' to build the monitor image.",
-            MONITOR_CONTAINER
-        );
-    }
-
-    info!("Monitor container '{}' started", MONITOR_CONTAINER);
-
-    monitor_ip().context("monitor container started but could not determine its IP address")
-}
-
-/// Look up the IPv4 address of the running monitor container.
-fn monitor_ip() -> Option<String> {
-    let output = exec_output_quiet("container", &["inspect", MONITOR_CONTAINER])?;
-    if !output.status.success() {
-        return None;
-    }
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-    // inspect returns an array; the monitor is the first (only) entry
-    let container = json.as_array()?.first()?;
-    if container["status"].as_str() != Some("running") {
-        return None;
-    }
-    // networks[0].ipv4Address is "x.x.x.x/mask"
-    let addr = container["networks"][0]["ipv4Address"].as_str()?;
-    Some(addr.split('/').next()?.to_string())
-}
 
 fn check_container_available() -> Result<()> {
     debug!("checking container CLI availability");
@@ -299,11 +254,12 @@ mod tests {
         let sandbox = dir.path().join(".claude-sandbox");
         init_sandbox(&sandbox, false).unwrap();
         assert!(sandbox.join("Containerfile").exists());
-        assert!(sandbox.join("Containerfile.monitor").exists());
         assert!(sandbox.join("claude.json").exists());
         assert!(sandbox.join("settings.json").exists());
         assert!(sandbox.join("CLAUDE.md").exists());
         assert!(sandbox.join("sandbox-test.sh").exists());
+        assert!(sandbox.join("git-hooks/pre-commit").exists());
+        assert!(sandbox.join("git-hooks/pre-push").exists());
     }
 
     #[test]

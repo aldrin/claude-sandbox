@@ -15,8 +15,6 @@ clippy:
 	cargo clippy
 
 rebuild: clean build
-	-container stop claude-monitor
-	-container rm claude-monitor
 	container image prune -a
 	$(BINARY) init --force
 	$(BINARY) build
