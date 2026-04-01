@@ -12,6 +12,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 #   Sandbox:  bubblewrap + socat (bash isolation)
 #   Rust:     build-essential, pkg-config, libssl-dev
 #   Python:   python3, python3-dev
+#   Docs:     fonts-ibm-plex (pandoc installed separately below)
 #   Editor:   emacs-nox
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git ca-certificates bash \
@@ -19,8 +20,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap socat \
     build-essential pkg-config libssl-dev \
     python3 python3-dev \
+    fonts-ibm-plex \
     emacs-nox \
     && rm -rf /var/lib/apt/lists/*
+
+# Pandoc — install latest from GitHub (apt version is too old)
+ARG PANDOC_VERSION=3.9.0.2
+RUN curl -sSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-arm64.deb" \
+    -o /tmp/pandoc.deb \
+    && dpkg -i /tmp/pandoc.deb \
+    && rm /tmp/pandoc.deb
 
 # Fix bubblewrap: setuid root so it works inside the container VM
 RUN chmod u+s /usr/bin/bwrap
@@ -28,16 +37,9 @@ RUN chmod u+s /usr/bin/bwrap
 # Create non-root user
 RUN useradd -m -d /home/claude -s /bin/bash claude
 USER claude
-RUN echo 'export EDITOR=emacs' >> /home/claude/.bashrc
 
-# =============================================================================
-# Claude Code
-# =============================================================================
-
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Claude Code installs to ~/.local/bin; set PATH now so later steps can use it
-ENV PATH="/home/claude/.local/bin:${PATH}"
+# PATH for tools installed to ~/.local/bin and ~/.cargo/bin
+ENV PATH="/home/claude/.local/bin:/home/claude/.cargo/bin:${PATH}"
 
 # Ensure 256-color support; not always inherited from the host terminal
 ENV TERM=xterm-256color
@@ -48,13 +50,6 @@ ENV EDITOR=emacs
 # home directory. CLAUDE_CODE_TMPDIR is set via settings.json.
 ENV TMPDIR="/home/claude/tmp"
 RUN mkdir -p /home/claude/tmp
-
-# Skip onboarding and pre-accept the project trust dialog for the code directory
-COPY --chown=claude:claude claude.json /home/claude/.claude.json
-
-# Permission mode, sandbox, and plugin configuration
-RUN mkdir -p /home/claude/.claude
-COPY --chown=claude:claude settings.json /home/claude/.claude/settings.json
 
 # =============================================================================
 # Rust
@@ -67,7 +62,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     --component clippy \
     --component rustfmt
 
-ENV PATH="/home/claude/.cargo/bin:${PATH}"
+# Nightly toolchain with rust-src for cargo-fuzz (libFuzzer requires nightly)
+RUN rustup toolchain install nightly --component rust-src
+
+# cargo-fuzz for running fuzz targets
+RUN cargo install cargo-fuzz
+
+# Typst typesetting compiler (pre-built binary from GitHub releases)
+RUN mkdir -p /home/claude/.local/bin \
+    && curl -sSL https://github.com/typst/typst/releases/latest/download/typst-aarch64-unknown-linux-musl.tar.xz \
+    | tar -xJ --strip-components=1 -C /home/claude/.local/bin
 
 # Shared target directory keeps build artifacts out of the project volume
 ENV CARGO_TARGET_DIR="/home/claude/cargo-target"
@@ -78,7 +82,6 @@ ENV CARGO_TARGET_DIR="/home/claude/cargo-target"
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# uv also installs to ~/.local/bin (already in PATH above)
 # Use container-local directories to avoid conflicts with host macOS packages
 ENV UV_PROJECT_ENVIRONMENT="/home/claude/.venv"
 ENV UV_CACHE_DIR="/home/claude/.cache/uv"
@@ -95,6 +98,19 @@ RUN ln -s /home/claude/.local/bin/basedpyright-langserver \
 # =============================================================================
 
 RUN curl https://install.duckdb.org | sh
+
+# =============================================================================
+# Claude Code (last among installs — changes most often, protects layer cache)
+# =============================================================================
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Skip onboarding and pre-accept the project trust dialog for the code directory
+COPY --chown=claude:claude claude.json /home/claude/.claude.json
+
+# Permission mode, sandbox, and plugin configuration
+RUN mkdir -p /home/claude/.claude
+COPY --chown=claude:claude settings.json /home/claude/.claude/settings.json
 
 # =============================================================================
 # Workspace

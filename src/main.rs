@@ -21,6 +21,7 @@ const SANDBOX_DIR: &str = ".claude-sandbox";
 const IMAGE_NAME_FILE: &str = "image-name";
 const IMAGE_PREFIX: &str = "claude-sandbox";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
+const HINT_RUN_INIT: &str = "Run 'claude-sandbox init' first to initialize the workspace.";
 
 #[derive(Parser)]
 #[command(
@@ -88,17 +89,14 @@ fn cmd_init(force: bool, name: Option<&str>) -> Result<()> {
 fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
     check_container_available()?;
 
-    let cwd = env::current_dir().context("failed to determine working directory")?;
+    let cwd = env::current_dir().context("failed to get current directory")?;
     let sandbox_dir = cwd.join(SANDBOX_DIR);
     let image = read_image_name(&sandbox_dir)?;
     check_image_built(&image)?;
 
     let settings_path = sandbox_dir.join("settings.json");
     if !settings_path.exists() {
-        bail!(
-            ".claude-sandbox/settings.json not found.\n\
-             Run 'claude-sandbox init' first to initialize the workspace."
-        );
+        bail!(".claude-sandbox/settings.json not found.\n{HINT_RUN_INIT}");
     }
 
     debug!("reading keychain service: {}", KEYCHAIN_SERVICE);
@@ -124,7 +122,10 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
         .map(String::from)
         .context("No accessToken found in keychain credentials")?;
 
-    debug!("running image '{}' with cpus={}, memory={}G", image, cpus, memory);
+    debug!(
+        "running image '{}' with cpus={}, memory={}G",
+        image, cpus, memory
+    );
 
     let code_volume = format!("{}:/home/claude/code", cwd.display());
     let settings_volume = format!(
@@ -194,7 +195,10 @@ fn init_sandbox(sandbox_dir: &Path, force: bool, image: &str) -> Result<()> {
             .with_context(|| format!("failed to write .claude-sandbox/git-hooks/{name}"))?;
     }
 
-    info!("Initialized workspace in .claude-sandbox/ (image: {})", image);
+    info!(
+        "Initialized workspace in .claude-sandbox/ (image: {})",
+        image
+    );
     Ok(())
 }
 
@@ -206,10 +210,7 @@ fn cmd_build() -> Result<()> {
     let image = read_image_name(&sandbox_dir)?;
 
     if !sandbox_dir.join("Containerfile").exists() {
-        bail!(
-            ".claude-sandbox/Containerfile not found.\n\
-             Run 'claude-sandbox init' first to initialize the workspace."
-        );
+        bail!(".claude-sandbox/Containerfile not found.\n{HINT_RUN_INIT}");
     }
 
     let sandbox_str = sandbox_dir.to_str().context("invalid sandbox path")?;
@@ -243,7 +244,13 @@ fn default_image_name(cwd: &Path) -> Result<String> {
     let sanitized: String = dir_name
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     Ok(format!("{}-{}", IMAGE_PREFIX, sanitized))
 }
@@ -252,9 +259,8 @@ fn read_image_name(sandbox_dir: &Path) -> Result<String> {
     let path = sandbox_dir.join(IMAGE_NAME_FILE);
     let content = fs::read_to_string(&path).with_context(|| {
         format!(
-            ".claude-sandbox/{} not found.\n\
-             Run 'claude-sandbox init' first to initialize the workspace.",
-            IMAGE_NAME_FILE
+            ".claude-sandbox/{} not found.\n{}",
+            IMAGE_NAME_FILE, HINT_RUN_INIT
         )
     })?;
     let name = content.trim().to_string();
@@ -369,5 +375,4 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_image_name(dir.path()).is_err());
     }
-
 }

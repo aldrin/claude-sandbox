@@ -101,7 +101,7 @@ section "Filesystem reads — unrestricted"
 # =============================================================================
 
 expect_allowed "read /etc/passwd"              test -r /etc/passwd
-expect_allowed "read /etc/shadow (if exists)"  test -e /etc/shadow && test -r /etc/shadow || pass "read /etc/shadow (no shadow file)"
+expect_allowed "read /etc/shadow (if exists)"  bash -c "test -e /etc/shadow && test -r /etc/shadow || ! test -e /etc/shadow"
 expect_allowed "read ~/.claude/settings.json"  test -r "${HOME}/.claude/settings.json"
 
 
@@ -113,12 +113,11 @@ section "Git — local operations"
 
 git_cmd() { GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C "${HOME}/code" "$@"; }
 
-expect_allowed "git status"    bash -c "GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C ${HOME}/code status"
-expect_allowed "git log"       bash -c "GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C ${HOME}/code log --oneline -1"
-expect_allowed "git diff"      bash -c "GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C ${HOME}/code diff"
-expect_allowed "git remote -v" bash -c "GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C ${HOME}/code remote -v"
-expect_blocked "git fetch (remote unreachable)" \
-    bash -c "GIT_CONFIG_NOSYSTEM=1 HOME=/tmp git -C ${HOME}/code fetch --dry-run"
+expect_allowed "git status"    git_cmd status
+expect_allowed "git log"       git_cmd log --oneline -1
+expect_allowed "git diff"      git_cmd diff
+expect_allowed "git remote -v" git_cmd remote -v
+expect_blocked "git fetch (remote unreachable)" git_cmd fetch --dry-run
 
 
 # =============================================================================

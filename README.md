@@ -118,16 +118,9 @@ Edit the `Containerfile` to add or remove tooling for your project.
 ### Settings
 
 `settings.json` configures Claude Code's permission mode, sandbox, and runtime environment.
-The `env` block contains variables grouped by purpose:
-
-- **Terminal** — `COLUMNS`, `LINES`, `LANG`, and `COLORTERM` ensure proper terminal behavior
-  inside the container.
-- **Paths** — `TMPDIR` and `CARGO_TARGET_DIR` are set so Claude doesn't need to prefix every
-  command with environment variables.
-- **Claude Code** — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turns off usage reporting, error
-  callbacks, and feedback prompts. `CLAUDE_CODE_DISABLE_CRON`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
-  and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` disable features that don't apply in an ephemeral
-  container.
+The `env` block sets paths (`TMPDIR`, `CARGO_TARGET_DIR`), terminal settings, and disables
+Claude Code features that don't apply in an ephemeral container (telemetry, cron, background
+tasks, auto-memory). It also pre-approves plugins for Rust, Python, and common workflows.
 
 [containers]: https://github.com/apple/container
 [sandbox]: https://code.claude.com/docs/en/sandboxing

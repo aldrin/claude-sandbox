@@ -1,21 +1,39 @@
-BINARY := ./target/release/claude-sandbox
+.PHONY: build test lint fmt check clean rebuild help
 
-.PHONY: build clean test clippy rebuild
+## Default target
+all: check
 
+## Build in debug mode
 build:
-	cargo build --release
+	cargo build --all-targets
 
-clean:
-	cargo clean
-
+## Run all tests
 test:
 	cargo test
 
-clippy:
-	cargo clippy
+## Run clippy with all warnings as errors
+lint:
+	cargo clippy --all-targets -- -D warnings
 
+## Check formatting without modifying files
+fmt:
+	cargo fmt --all --check
+
+## Run fmt + lint + test (required before every commit)
+check: fmt lint test
+	@echo "--- all checks passed"
+
+## Remove build artifacts
+clean:
+	cargo clean
+
+## Clean, rebuild image, re-init, and run (requires Apple container CLI)
 rebuild: clean build
 	container image prune -a
-	$(BINARY) init --force
-	$(BINARY) build
-	$(BINARY) run
+	cargo run -- init --force
+	cargo run -- build
+	cargo run -- run
+
+## Show available targets
+help:
+	@grep -E '^## ' Makefile | sed 's/## //'
