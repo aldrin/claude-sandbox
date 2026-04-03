@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt check clean rebuild help
+.PHONY: build test lint fmt check clean install rebuild help
 
 ## Default target
 all: check
@@ -19,20 +19,28 @@ lint:
 fmt:
 	cargo fmt --all --check
 
-## Run fmt + lint + test (required before every commit)
-check: fmt lint test
+## Run code coverage
+cov:
+	cargo llvm-cov
+
+## Run fmt + lint + test + cov (required before every commit)
+check: fmt lint test cov
 	@echo "--- all checks passed"
+
+## Install to ~/.cargo/bin
+install:
+	cargo install --path .
 
 ## Remove build artifacts
 clean:
 	cargo clean
 
 ## Clean, rebuild image, re-init, and run (requires Apple container CLI)
-rebuild: clean build
+rebuild: clean install
 	container image prune -a
-	cargo run -- init --force
-	cargo run -- build
-	cargo run -- run
+	claude-sandbox init --force
+	claude-sandbox build
+	claude-sandbox run
 
 ## Show available targets
 help:

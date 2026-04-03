@@ -1,6 +1,3 @@
 [user]
 	name = Claude (sandbox)
 	email = claude@sandbox
-
-[core]
-	hooksPath = /home/claude/git-hooks

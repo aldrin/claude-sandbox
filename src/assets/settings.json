@@ -4,15 +4,9 @@
   "disableDeepLinkRegistration": "disable",
   "feedbackSurveyRate": 0,
   "prefersReducedMotion": true,
-  "attribution": {
-    "pr": ""
-  },
-
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "mcp__aws__aws___read_documentation",
-      "mcp__aws__aws___search_documentation",
       "WebSearch",
       "WebFetch(domain:index.crates.io)",
       "WebFetch(domain:static.crates.io)",
@@ -23,7 +17,13 @@
 
   "sandbox": {
     "enabled": true,
-    "autoAllowBashIfSandboxed": true
+    "failIfUnavailable": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [],
+      "allowAllUnixSockets": false
+    }
   },
 
   "enabledPlugins": {
@@ -33,7 +33,14 @@
     "feature-dev@claude-plugins-official": true
   },
 
+  "model": "claude-opus-4-6",
+
+  "companyAnnouncements": [
+    "Aldrin's Sandbox · verify with ~/sandbox-checks.py"
+  ],
+
   "spinnerTipsEnabled": false,
+  "voiceEnabled": false,
 
   "env": {
     "COLUMNS": "200",
@@ -41,10 +48,10 @@
     "LANG": "en_US.UTF-8",
     "COLORTERM": "truecolor",
 
-    "TMPDIR": "/home/claude/tmp",
+    "TMPDIR": "/tmp/claude",
     "CARGO_TARGET_DIR": "/home/claude/cargo-target",
 
-    "CLAUDE_CODE_TMPDIR": "/home/claude/tmp",
+    "CLAUDE_CODE_TMPDIR": "/tmp/claude",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",

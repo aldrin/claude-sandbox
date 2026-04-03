@@ -34,7 +34,7 @@
   <text x="268" y="148" class="mono" font-size="12" font-weight="600">CLAUDE.md</text>
   <text x="268" y="163" class="dim">context for Claude in the sandbox</text>
 
-  <!-- git-hooks -->
-  <text x="268" y="184" class="mono" font-size="12" font-weight="600">git-hooks/</text>
-  <text x="268" y="199" class="dim">commit and push blocked — host user owns the history</text>
+  <!-- sandbox scripts -->
+  <text x="268" y="184" class="mono" font-size="12" font-weight="600">sandbox-checks.py · sandbox-tools.py</text>
+  <text x="268" y="199" class="dim">security invariants · toolchain verification</text>
 </svg>

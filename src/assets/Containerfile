@@ -2,20 +2,20 @@
 # Provides a complete development environment for working with Claude Code,
 # including Rust toolchain and Python tools.
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install system-level dependencies for all sections below.
-#   Base:     curl, git, ca-certificates, bash
+#   Base:     curl, git, ca-certificates
 #   Claude:   ripgrep
 #   Sandbox:  bubblewrap + socat (bash isolation)
 #   Rust:     build-essential, pkg-config, libssl-dev
 #   Python:   python3, python3-dev
-#   Docs:     fonts-ibm-plex (pandoc installed separately below)
+#   Docs:     fonts-ibm-plex
 #   Editor:   emacs-nox
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git ca-certificates bash \
+    curl git ca-certificates \
     ripgrep \
     bubblewrap socat \
     build-essential pkg-config libssl-dev \
@@ -24,12 +24,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     emacs-nox \
     && rm -rf /var/lib/apt/lists/*
 
-# Pandoc — install latest from GitHub (apt version is too old)
-ARG PANDOC_VERSION=3.9.0.2
-RUN curl -sSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-arm64.deb" \
-    -o /tmp/pandoc.deb \
-    && dpkg -i /tmp/pandoc.deb \
-    && rm /tmp/pandoc.deb
+# Pandoc (apt version lags behind; install pre-built binary from GitHub)
+RUN curl -sSL https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc-3.9.0.2-linux-arm64.tar.gz \
+    | tar -xz --strip-components=1 -C /usr/local
+
+# Typst typesetting compiler (not packaged in Ubuntu; pre-built binary from GitHub)
+RUN curl -sSL https://github.com/typst/typst/releases/latest/download/typst-aarch64-unknown-linux-musl.tar.xz \
+    | tar -xJ --strip-components=1 -C /usr/local/bin
 
 # Fix bubblewrap: setuid root so it works inside the container VM
 RUN chmod u+s /usr/bin/bwrap
@@ -45,11 +46,8 @@ ENV PATH="/home/claude/.local/bin:/home/claude/.cargo/bin:${PATH}"
 ENV TERM=xterm-256color
 ENV EDITOR=emacs
 
-# Temp directory: bubblewrap mounts a fresh empty tmpfs at /tmp so the default
-# /tmp/claude/ path never exists. Redirect shell TMPDIR into the sandbox-writable
-# home directory. CLAUDE_CODE_TMPDIR is set via settings.json.
-ENV TMPDIR="/home/claude/tmp"
-RUN mkdir -p /home/claude/tmp
+# bwrap sets TMPDIR=/tmp/claude at runtime; ensure the directory exists
+RUN mkdir -p /tmp/claude
 
 # =============================================================================
 # Rust
@@ -60,18 +58,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     --component rust-analyzer \
     --component rust-src \
     --component clippy \
-    --component rustfmt
+    --component rustfmt \
+    --component llvm-tools
 
 # Nightly toolchain with rust-src for cargo-fuzz (libFuzzer requires nightly)
 RUN rustup toolchain install nightly --component rust-src
 
-# cargo-fuzz for running fuzz targets
-RUN cargo install cargo-fuzz
-
-# Typst typesetting compiler (pre-built binary from GitHub releases)
-RUN mkdir -p /home/claude/.local/bin \
-    && curl -sSL https://github.com/typst/typst/releases/latest/download/typst-aarch64-unknown-linux-musl.tar.xz \
-    | tar -xJ --strip-components=1 -C /home/claude/.local/bin
+# cargo-fuzz for running fuzz targets; cargo-llvm-cov for code coverage
+RUN cargo install cargo-fuzz cargo-llvm-cov
 
 # Shared target directory keeps build artifacts out of the project volume
 ENV CARGO_TARGET_DIR="/home/claude/cargo-target"
@@ -86,12 +80,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV UV_PROJECT_ENVIRONMENT="/home/claude/.venv"
 ENV UV_CACHE_DIR="/home/claude/.cache/uv"
 
-RUN uv tool install basedpyright
-
-# The official pyright-lsp plugin looks for pyright-langserver; basedpyright is
-# protocol-compatible so a symlink is enough to satisfy the binary requirement.
-RUN ln -s /home/claude/.local/bin/basedpyright-langserver \
-    /home/claude/.local/bin/pyright-langserver
+RUN uv tool install basedpyright \
+    && ln -s basedpyright-langserver /home/claude/.local/bin/pyright-langserver
 
 # =============================================================================
 # DuckDB
@@ -105,22 +95,29 @@ RUN curl https://install.duckdb.org | sh
 
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Skip onboarding and pre-accept the project trust dialog for the code directory
-COPY --chown=claude:claude claude.json /home/claude/.claude.json
+# Pre-install plugins so they are available from the first session without prompting
+RUN claude plugin marketplace add anthropics/claude-plugins-official \
+    && claude plugin install rust-analyzer-lsp@claude-plugins-official \
+    && claude plugin install pyright-lsp@claude-plugins-official \
+    && claude plugin install code-simplifier@claude-plugins-official \
+    && claude plugin install feature-dev@claude-plugins-official
 
-# Permission mode, sandbox, and plugin configuration
+# =============================================================================
+# Workspace — root-owned config files (Edit/Write tools bypass bwrap)
+# =============================================================================
+
+# Switch to root so COPY produces root-owned files that the claude user
+# cannot modify in place (Edit/Write tools bypass bwrap restrictions)
+USER root
+
+COPY claude.json /home/claude/.claude.json
 RUN mkdir -p /home/claude/.claude
-COPY --chown=claude:claude settings.json /home/claude/.claude/settings.json
+COPY settings.json /home/claude/.claude/settings.json
+COPY CLAUDE.md /home/claude/CLAUDE.md
+COPY .gitconfig /home/claude/.gitconfig
+COPY sandbox-checks.py /home/claude/sandbox-checks.py
+COPY sandbox-tools.py /home/claude/sandbox-tools.py
 
-# =============================================================================
-# Workspace
-# =============================================================================
-
-COPY --chown=claude:claude CLAUDE.md /home/claude/CLAUDE.md
-COPY --chown=claude:claude .gitconfig /home/claude/.gitconfig
-COPY --chown=claude:claude git-hooks/ /home/claude/git-hooks/
-RUN chmod +x /home/claude/git-hooks/*
-COPY --chown=claude:claude sandbox-test.sh /home/claude/sandbox-test.sh
-
+USER claude
 WORKDIR /home/claude
 ENTRYPOINT ["claude"]

@@ -1,3 +1,0 @@
-#!/bin/sh
-printf 'error: commits are disabled in the sandbox — commit from the host terminal.\n' >&2
-exit 1

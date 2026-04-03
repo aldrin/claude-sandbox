@@ -1,3 +1,0 @@
-#!/bin/sh
-printf 'error: pushes are disabled in the sandbox — push from the host terminal.\n' >&2
-exit 1

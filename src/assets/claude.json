@@ -1,0 +1,9 @@
+{
+  "hasCompletedOnboarding": true,
+  "installMethod": "native",
+  "projects": {
+    "/home/claude": {
+      "hasTrustDialogAccepted": true
+    }
+  }
+}

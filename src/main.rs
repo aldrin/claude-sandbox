@@ -23,6 +23,19 @@ const IMAGE_PREFIX: &str = "claude-sandbox";
 const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const HINT_RUN_INIT: &str = "Run 'claude-sandbox init' first to initialize the workspace.";
 
+const ASSETS: &[(&str, &str)] = &[
+    ("Containerfile", include_str!("assets/Containerfile")),
+    ("claude.json", include_str!("assets/claude.json")),
+    ("settings.json", include_str!("assets/settings.json")),
+    ("CLAUDE.md", include_str!("assets/CLAUDE.md")),
+    ("sandbox-tools.py", include_str!("assets/sandbox-tools.py")),
+    (
+        "sandbox-checks.py",
+        include_str!("assets/sandbox-checks.py"),
+    ),
+    (".gitconfig", include_str!("assets/.gitconfig")),
+];
+
 #[derive(Parser)]
 #[command(
     name = "claude-sandbox",
@@ -60,6 +73,9 @@ enum Commands {
         #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u8).range(2..=8))]
         memory: u8,
     },
+
+    /// Compare .claude-sandbox/ files against the current binary's embedded assets
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -71,6 +87,7 @@ fn main() -> Result<()> {
         Commands::Init { force, name } => cmd_init(force, name.as_deref()),
         Commands::Build => cmd_build(),
         Commands::Run { cpus, memory } => cmd_run(cpus, memory),
+        Commands::Status => cmd_status(),
     }
 }
 
@@ -93,11 +110,6 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
     let sandbox_dir = cwd.join(SANDBOX_DIR);
     let image = read_image_name(&sandbox_dir)?;
     check_image_built(&image)?;
-
-    let settings_path = sandbox_dir.join("settings.json");
-    if !settings_path.exists() {
-        bail!(".claude-sandbox/settings.json not found.\n{HINT_RUN_INIT}");
-    }
 
     debug!("reading keychain service: {}", KEYCHAIN_SERVICE);
     let json_str = exec_output_quiet(
@@ -127,28 +139,7 @@ fn cmd_run(cpus: u8, memory: u8) -> Result<()> {
         image, cpus, memory
     );
 
-    let code_volume = format!("{}:/home/claude/code", cwd.display());
-    let settings_volume = format!(
-        "{}:/home/claude/.claude/settings.json",
-        settings_path.display()
-    );
-
-    let args = vec![
-        "run".to_string(),
-        "--rm".to_string(),
-        "-it".to_string(),
-        "-e".to_string(),
-        "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
-        "-m".to_string(),
-        format!("{}G", memory),
-        "-c".to_string(),
-        cpus.to_string(),
-        "-v".to_string(),
-        code_volume,
-        "-v".to_string(),
-        settings_volume,
-        image,
-    ];
+    let args = run_args(&cwd, &image, cpus, memory);
 
     debug!(
         "exec: container run {} (token redacted)",
@@ -173,26 +164,9 @@ fn init_sandbox(sandbox_dir: &Path, force: bool, image: &str) -> Result<()> {
     fs::write(sandbox_dir.join(IMAGE_NAME_FILE), format!("{}\n", image))
         .context("failed to write .claude-sandbox/image-name")?;
 
-    for (name, content) in [
-        ("Containerfile", include_str!("../assets/Containerfile")),
-        ("claude.json", include_str!("../assets/claude.json")),
-        ("settings.json", include_str!("../assets/settings.json")),
-        ("CLAUDE.md", include_str!("../assets/CLAUDE.md")),
-        (".gitconfig", include_str!("../assets/.gitconfig")),
-        ("sandbox-test.sh", include_str!("../assets/sandbox-test.sh")),
-    ] {
+    for (name, content) in ASSETS {
         fs::write(sandbox_dir.join(name), content)
             .with_context(|| format!("failed to write .claude-sandbox/{name}"))?;
-    }
-
-    let hooks_dir = sandbox_dir.join("git-hooks");
-    fs::create_dir_all(&hooks_dir).context("failed to create .claude-sandbox/git-hooks")?;
-    for (name, content) in [
-        ("pre-commit", include_str!("../assets/git-hooks/pre-commit")),
-        ("pre-push", include_str!("../assets/git-hooks/pre-push")),
-    ] {
-        fs::write(hooks_dir.join(name), content)
-            .with_context(|| format!("failed to write .claude-sandbox/git-hooks/{name}"))?;
     }
 
     info!(
@@ -231,6 +205,39 @@ fn cmd_build() -> Result<()> {
     }
 
     info!("Image '{}' built successfully", image);
+    Ok(())
+}
+
+fn cmd_status() -> Result<()> {
+    let cwd = env::current_dir().context("failed to get current directory")?;
+    let sandbox_dir = cwd.join(SANDBOX_DIR);
+
+    if !sandbox_dir.join("Containerfile").exists() {
+        bail!(".claude-sandbox/ not initialized.\n{HINT_RUN_INIT}");
+    }
+
+    let mut diffs = 0usize;
+    for (name, embedded) in ASSETS {
+        let path = sandbox_dir.join(name);
+        match fs::read_to_string(&path) {
+            Ok(ref content) if content == embedded => println!("  ok    {name}"),
+            Ok(_) => {
+                println!("  DIFF  {name}");
+                diffs += 1;
+            }
+            Err(_) => {
+                println!("  MISS  {name}");
+                diffs += 1;
+            }
+        }
+    }
+
+    if diffs > 0 {
+        println!("\n{diffs} file(s) differ — run 'claude-sandbox init --force' to update");
+    } else {
+        println!("\nAll files match");
+    }
+
     Ok(())
 }
 
@@ -297,6 +304,24 @@ fn check_image_built(image: &str) -> Result<()> {
     Ok(())
 }
 
+fn run_args(cwd: &Path, image: &str, cpus: u8, memory: u8) -> Vec<String> {
+    let code_volume = format!("{}:/home/claude/code", cwd.display());
+    vec![
+        "run".to_string(),
+        "--rm".to_string(),
+        "-it".to_string(),
+        "-e".to_string(),
+        "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
+        "-m".to_string(),
+        format!("{}G", memory),
+        "-c".to_string(),
+        cpus.to_string(),
+        "-v".to_string(),
+        code_volume,
+        image.to_string(),
+    ]
+}
+
 fn exec_output_quiet(program: &str, args: &[&str]) -> Option<Output> {
     Command::new(program).args(args).output().ok()
 }
@@ -314,9 +339,8 @@ mod tests {
         assert!(sandbox.join("claude.json").exists());
         assert!(sandbox.join("settings.json").exists());
         assert!(sandbox.join("CLAUDE.md").exists());
-        assert!(sandbox.join("sandbox-test.sh").exists());
-        assert!(sandbox.join("git-hooks/pre-commit").exists());
-        assert!(sandbox.join("git-hooks/pre-push").exists());
+        assert!(sandbox.join("sandbox-tools.py").exists());
+        assert!(sandbox.join("sandbox-checks.py").exists());
     }
 
     #[test]
@@ -366,13 +390,82 @@ mod tests {
         init_sandbox(&sandbox, true, "claude-sandbox-test").unwrap();
         assert_eq!(
             fs::read_to_string(sandbox.join("Containerfile")).unwrap(),
-            include_str!("../assets/Containerfile")
+            include_str!("assets/Containerfile")
         );
+    }
+
+    #[test]
+    fn test_assets_match_after_init() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "test").unwrap();
+        for (name, embedded) in ASSETS {
+            let content = fs::read_to_string(sandbox.join(name)).unwrap();
+            assert_eq!(&content, embedded, "{name} differs after init");
+        }
+    }
+
+    #[test]
+    fn test_assets_detect_modification() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "test").unwrap();
+        fs::write(sandbox.join("Containerfile"), "modified").unwrap();
+        let content = fs::read_to_string(sandbox.join("Containerfile")).unwrap();
+        assert_ne!(content, include_str!("assets/Containerfile"));
     }
 
     #[test]
     fn test_read_image_name_missing() {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_image_name(dir.path()).is_err());
+    }
+
+    #[test]
+    fn test_run_args_default() {
+        let args = run_args(
+            Path::new("/Users/me/project"),
+            "claude-sandbox-project",
+            2,
+            4,
+        );
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "--rm",
+                "-it",
+                "-e",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "-m",
+                "4G",
+                "-c",
+                "2",
+                "-v",
+                "/Users/me/project:/home/claude/code",
+                "claude-sandbox-project",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_run_args_custom_resources() {
+        let args = run_args(Path::new("/tmp/test"), "my-image", 8, 8);
+        assert_eq!(args[5], "-m");
+        assert_eq!(args[6], "8G");
+        assert_eq!(args[7], "-c");
+        assert_eq!(args[8], "8");
+    }
+
+    #[test]
+    fn test_run_args_volume_mount() {
+        let args = run_args(Path::new("/Users/me/my project"), "img", 2, 4);
+        assert_eq!(args[10], "/Users/me/my project:/home/claude/code");
+    }
+
+    #[test]
+    fn test_run_args_image_is_last() {
+        let args = run_args(Path::new("/tmp"), "my-image", 2, 4);
+        assert_eq!(args.last().unwrap(), "my-image");
     }
 }

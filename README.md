@@ -1,15 +1,21 @@
 # claude-sandbox
 
-When using Claude Code for real work, you want it to make changes freely without interrupting
-you for permission on every file. But you also don't want it touching anything outside your
-project. `claude-sandbox` runs Claude Code in a Linux container with only your project directory
-mounted, so it has the access it needs and nothing more.
+Claude Code is most useful when it can edit files and run commands on its own. You don't want to
+give it access to everything on your machine, but you also don't want to babysit every action it
+takes. `claude-sandbox` is how I balance this for my personal projects. It runs Claude Code in a
+lightweight Linux VM (via [Apple Containers][containers] on macOS Tahoe) with only your project
+directory mounted. Claude only sees the directory you started it in and nothing else on the host.
 
-It gives you a simple workflow to initialize, build, and run a container with the latest Claude Code
-pre-installed, sandboxed, and ready to work on your project. Under the hood, it uses [Apple
-container VMs][containers] for isolation, Claude Code's built-in [sandbox mode][sandbox] to confine shell commands
-within the container, and [acceptEdits][permissions] mode so Claude can edit files without
-prompting you.
+Inside the VM, Claude Code's [sandbox mode][sandbox] and [acceptEdits][permissions] let bash commands
+run freely without prompting. As long as work stays local, you never see a permission dialog. If a
+command tries to reach a domain that isn't allowlisted, the bubblewrap sandbox triggers a permission
+prompt automatically. Most work doesn't need remote content, so most sessions run uninterrupted.
+
+In short, `claude-sandbox` is a standalone CLI that runs Claude Code in an isolated Linux VM with
+sandbox mode and acceptEdits, so bash runs freely inside [bubblewrap][bubblewrap] but anything that
+reaches outside prompts you.
+
+To use it, install with:
 
 ```bash
 cargo install --git https://github.com/aldrin/claude-sandbox.git
@@ -17,111 +23,161 @@ cargo install --git https://github.com/aldrin/claude-sandbox.git
 
 ### Usage
 
-Normally, you'd go into a project directory and run `claude` to start a session. With
-`claude-sandbox`, you do the same thing, except instead of running Claude Code directly on your
-Mac, you end up in a sandboxed container with the same Claude interface, and your project mounted
-inside it. There's a one-time setup per project: `init` creates a `.claude-sandbox/` directory
-with a container image definition and Claude configuration, and `build` builds the image. After
-that, `run` is all you need.
+```
+$ claude-sandbox --help
+Launch Claude Code in a sandboxed Apple container VM.
 
-Each project gets its own container image. By default, the name is `claude-sandbox-<dirname>`,
-derived from the current directory (lowercased, non-alphanumeric characters replaced with `-`).
-You can override this with `--name` during init. The chosen name is saved in
-`.claude-sandbox/image-name` and used automatically by `build` and `run`. This means you can
-run multiple sandboxes simultaneously for different projects without conflicts.
+Usage: claude-sandbox <COMMAND>
 
-- **`init`** creates a `.claude-sandbox/` directory in your project with a `Containerfile` defining
-  the container image (Ubuntu 24.04 with Claude Code and your developer tooling), default settings
-  that enable sandbox mode and `acceptEdits` permissions, a `CLAUDE.md` to orient Claude Code
-  when it runs in the container, and git hooks that block commits from inside the sandbox so the
-  host user retains ownership of the git history. Edit the `Containerfile` to add language
-  toolchains or tools your project needs, and `settings.json` to adjust Claude's permissions.
+Commands:
+  init    Initialize workspace with default Containerfile
+  build   Build the sandbox container image
+  run     Run Claude Code in the container
+  status  Compare .claude-sandbox/ files against the current binary's embedded assets
+  help    Print this message or the help of the given subcommand(s)
 
-  Use `--name` to choose a custom image name:
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
 
-  ```bash
-  claude-sandbox init --name my-project-sandbox
-  ```
+The CLI has three primary commands. Go into a project directory and run `init` to scaffold a
+`.claude-sandbox/` directory with the image definition and Claude Code configuration.
+Run `build` to build the container image. After that, `run` is all you need to start
+Claude Code inside the container.
+
+Each project gets its own image, named `claude-sandbox-<dirname>` by default. You can
+override this with `--name` during init. The name is saved in `.claude-sandbox/image-name`
+and reused by `build` and `run`, so multiple sandboxes for different projects can run
+at once.
+
+- **`init`** scaffolds `.claude-sandbox/` in your project with a `Containerfile`
+  (Ubuntu 26.04 with Claude Code and developer tooling), `settings.json` for permissions
+  and sandbox config, and a `CLAUDE.md` to orient Claude inside the container. Edit the
+  `Containerfile` to add what your project needs.
 
   <p align="center"><img src="init.svg"/></p>
 
-- **`build`** invokes the container CLI to build the image from `.claude-sandbox/Containerfile`
-  using the name chosen during init. Make sure the Apple container system is running first. If
-  not, start it with `container system start`. For a project in `~/myapp`, the build command runs:
+- **`build`** builds the container image. Make sure Apple Containers is running first
+  (`container system start`). The first build pulls in Claude Code and your tooling, so
+  it takes a few minutes. Rebuild only when you change the `Containerfile`.
 
-  ```bash
-  container build -t claude-sandbox-myapp -f .claude-sandbox/Containerfile .claude-sandbox
-  ```
-
-  This pulls in Claude Code and your developer tooling, so it takes a few minutes the first time.
-  Re-run it only when you update the `Containerfile`.
-
-- **`run`** launches Claude Code in the image you built, with your project mounted. It reads your
-  Claude OAuth token from the macOS keychain and passes it into the container as an environment
-  variable. If you haven't authenticated yet, run `claude auth login` first, as that's what
-  populates the keychain.
+- **`run`** launches Claude Code in the container with your project mounted. It reads
+  your OAuth token from the macOS keychain and passes it as an environment variable. If
+  you haven't authenticated yet, run `claude auth login` first.
 
   <p align="center"><img src="run.svg"/></p>
 
-  By default, the container gets 2 CPUs and 4 GB of memory. Use `--cpus` and `--memory` to adjust
-  (both accept values between 2 and 8). The container is destroyed on exit.
+  The container gets 2 CPUs and 4 GB of memory by default. `--cpus` and `--memory`
+  accept values between 2 and 8. The container is destroyed on exit.
 
-  > **Note:** The token never appears in the command line on your Mac, but is visible via
-  > `container inspect` and in the environment of any shell running inside the container.
+  > **Note:** The token never appears on the command line, but is visible via
+  > `container inspect` and inside the container's environment.
 
-  A successful run looks like this. Use `/doctor` to confirm the sandbox is active. Version
-  numbers in your output will differ, but the general structure should match.
+  A `sandbox-checks.py` script in the container reports the isolation state.
 
   ```
-      ✻
-      |
-     ▟█▙     Claude Code v2.1.71
-   ▐▛███▜▌   Sonnet 4.6 · Claude API
-  ▝▜█████▛▘  /home/claude
-    ▘▘ ▝▝
+  ❯ python3 ~/sandbox-checks.py
 
-  ❯ /doctor
+  Outbound network is blocked
 
-   Diagnostics
-   └ Currently running: native (2.1.71)
-   └ Path: /home/claude/.local/share/claude/versions/2.1.71
-   └ Invoked: /home/claude/.local/share/claude/versions/2.1.71
-   └ Config install method: native
-   └ Search: OK (bundled)
+    PASS  DNS unreachable: github.com
+    PASS  DNS unreachable: pypi.org
+    PASS  DNS unreachable: google.com
+    PASS  TCP unreachable: GitHub HTTPS (github.com:443)
+    PASS  TCP unreachable: GitHub SSH (github.com:22)
+    PASS  TCP unreachable: PyPI (pypi.org:443)
+    PASS  TCP unreachable: npm (registry.npmjs.org:443)
+    PASS  TCP unreachable: Cloudflare DNS (1.1.1.1:53)
+    PASS  TCP unreachable: Google DNS (8.8.8.8:53)
 
-   Updates
-   └ Auto-updates: disabled (DISABLE_AUTOUPDATER set)
-   └ Auto-update channel: latest
-   └ Stable version: 2.1.58
-   └ Latest version: 2.1.71
+  System paths are read-only
 
-   Sandbox
-   └ Status: Available (with warnings)
-   └ seccomp not available - unix socket access not restricted
+    PASS  /etc is read-only
+    PASS  /usr is read-only
+    PASS  /usr/bin is read-only
+    PASS  /var is read-only
 
-   Version Locks
-   └ Cleaned 1 stale lock(s)
-   └ No active version locks
+  Work paths are writable
+
+    PASS  /home/claude is writable
+    PASS  /home/claude/code is writable
+    PASS  /tmp/claude is writable
+
+  Process runs in sandbox
+
+    PASS  SANDBOX_RUNTIME=1
+
+  Allowed traffic is mediated by proxy
+
+    PASS  HTTP_PROXY points to local proxy
+    PASS  HTTPS_PROXY points to local proxy
+    PASS  ALL_PROXY points to local proxy
+    PASS  SSH is routed through proxy
+
+  ────────────────────────────────────────
+    Network:     ok    outbound DNS and TCP blocked
+    Filesystem:  ok    / read-only, workdir writable
+    Process:     ok    SANDBOX_RUNTIME=1
+    Proxy:       ok    HTTP, HTTPS, and SSH via localhost
+  ────────────────────────────────────────
+  21 passed, 0 failed
   ```
 
 ### What's in the container
 
-The default `Containerfile` includes:
+The container is a workspace for writing and testing code with Claude. The default
+`Containerfile` reflects my own toolchain. Edit it to fit yours. A bundled
+`sandbox-tools.py` script shows what's installed.
 
-- **Rust** — stable toolchain with `rust-analyzer`, `clippy`, `rustfmt`, and `rust-src`
-- **Python** — `uv` for package management, `basedpyright` for type checking
-- **DuckDB** — for data analysis; prefer it over loading data into Python when querying
-  files, CSVs, Parquet, or JSON
+  ```
+  ❯ python3 ~/sandbox-tools.py
 
-Edit the `Containerfile` to add or remove tooling for your project.
+  Development toolchain is available
+
+    PASS  Rust compiler  rustc 1.94.1
+    PASS  Cargo  cargo 1.94.1
+    PASS  rust-analyzer  rust-analyzer 1.94.1
+    PASS  Clippy  clippy 0.1.94
+    PASS  rustfmt  rustfmt 1.8.0-stable
+    PASS  Python  Python 3.14.3
+    PASS  uv  uv 0.11.3
+    PASS  basedpyright  basedpyright 1.39.0
+    PASS  DuckDB  v1.5.1
+    PASS  Pandoc  pandoc 3.9.0.2
+    PASS  Typst  typst 0.14.2
+    PASS  Emacs  GNU Emacs 30.2
+    PASS  ripgrep  ripgrep 15.1.0
+    PASS  bubblewrap  bubblewrap 0.11.1
+
+  Plugins are installed and active
+
+    PASS  rust-analyzer-lsp is installed
+    PASS  pyright-lsp is installed
+    PASS  code-simplifier is installed
+    PASS  feature-dev is installed
+
+  Runtime environment is configured
+
+    PASS  CARGO_TARGET_DIR=/home/claude/cargo-target
+    PASS  TMPDIR=/tmp/claude
+    PASS  EDITOR=emacs
+    PASS  TERM=xterm-256color
+
+  ────────────────────────────────────────
+  22 passed, 0 failed
+  ```
+
+  Version numbers reflect the container image at build time and may differ from yours.
 
 ### Settings
 
-`settings.json` configures Claude Code's permission mode, sandbox, and runtime environment.
-The `env` block sets paths (`TMPDIR`, `CARGO_TARGET_DIR`), terminal settings, and disables
-Claude Code features that don't apply in an ephemeral container (telemetry, cron, background
-tasks, auto-memory). It also pre-approves plugins for Rust, Python, and common workflows.
+`settings.json` controls permissions, sandbox mode, and the runtime environment. The
+`env` block sets paths, terminal settings, and disables features that don't apply in an
+ephemeral container (cron, background tasks, auto-memory). It also pre-approves plugins
+for Rust, Python, and common workflows.
 
 [containers]: https://github.com/apple/container
 [sandbox]: https://code.claude.com/docs/en/sandboxing
 [permissions]: https://code.claude.com/docs/en/permissions
+[bubblewrap]: https://github.com/containers/bubblewrap
