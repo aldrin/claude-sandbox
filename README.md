@@ -102,7 +102,12 @@ at once.
 
     PASS  /home/claude is writable
     PASS  /home/claude/code is writable
+    PASS  /home/claude/cargo-target is writable
     PASS  /tmp/claude is writable
+
+  Localhost port binding works
+
+    PASS  bind() to 127.0.0.1:0 succeeds
 
   Process runs in sandbox
 
@@ -118,10 +123,11 @@ at once.
   ────────────────────────────────────────
     Network:     ok    outbound DNS and TCP blocked
     Filesystem:  ok    / read-only, workdir writable
+    Localhost:   ok    bind() to 127.0.0.1 works
     Process:     ok    SANDBOX_RUNTIME=1
     Proxy:       ok    HTTP, HTTPS, and SSH via localhost
   ────────────────────────────────────────
-  21 passed, 0 failed
+  23 passed, 0 failed
   ```
 
 ### What's in the container

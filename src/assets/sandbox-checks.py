@@ -177,13 +177,25 @@ for host, port, label in [
 
 def check_writable(path: str, expect_writable: bool) -> None:
     """Probe whether *path* is writable and compare against expectation."""
+    created_dir = False
+    if not os.path.isdir(path):
+        if not expect_writable:
+            check(True, f"{path} is read-only", "does not exist")
+            return
+        try:
+            os.makedirs(path, exist_ok=True)
+            created_dir = True
+        except OSError as e:
+            check(False, f"{path} is writable", f"mkdir failed: {type(e).__name__}")
+            return
     probe = os.path.join(path, ".sandbox-probe")
     try:
         with open(probe, "w") as f:
             f.write("test")
         os.remove(probe)
-        label = f"{path} is writable"
-        check(expect_writable, label)
+        if created_dir:
+            os.rmdir(path)
+        check(expect_writable, f"{path} is writable")
     except OSError as e:
         label = f"{path} is {'writable' if expect_writable else 'read-only'}"
         check(not expect_writable, label, type(e).__name__)
@@ -197,11 +209,35 @@ for path in ["/etc", "/usr", "/usr/bin", "/var"]:
 
 heading("Work paths are writable", "fs_rw")
 
-for path in ["/home/claude", "/home/claude/code", "/tmp/claude"]:
+for path in ["/home/claude", "/home/claude/code", "/home/claude/cargo-target", "/tmp/claude"]:
     check_writable(path, expect_writable=True)
 
 
-# ── 4. Process isolation ─────────────────────────────────────────────
+# ── 4. Localhost binding ─────────────────────────────────────────────
+#
+# allowLocalBinding: true lets sandboxed processes bind to localhost
+# ports.  This is needed for dev servers and integration tests.
+
+heading("Localhost port binding works", "local_bind")
+
+
+def localhost_bind_works() -> tuple[bool, str]:
+    """Try to bind a socket to localhost on an ephemeral port."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        _, port = s.getsockname()
+        s.close()
+        return True, f"bound to 127.0.0.1:{port}"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
+ok, detail = localhost_bind_works()
+check(ok, "bind() to 127.0.0.1:0 succeeds", detail)
+
+
+# ── 5. Process isolation ─────────────────────────────────────────────
 
 heading("Process runs in sandbox", "process")
 
@@ -212,7 +248,7 @@ check(
 )
 
 
-# ── 5. Network proxy ─────────────────────────────────────────────────
+# ── 6. Network proxy ─────────────────────────────────────────────────
 #
 # bwrap --setenv routes proxy variables to localhost socat relays that
 # forward through a UNIX socket to Claude Code's proxy.  Allowed traffic
@@ -245,6 +281,7 @@ print(f"\n{'─' * 40}")
 print(f"  Network:     {_ok('network'):4s}  outbound DNS and TCP blocked")
 _fs = "ok" if sections.get("fs_ro", False) and sections.get("fs_rw", False) else "FAIL"
 print(f"  Filesystem:  {_fs:4s}  / read-only, workdir writable")
+print(f"  Localhost:   {_ok('local_bind'):4s}  bind() to 127.0.0.1 works")
 print(f"  Process:     {_ok('process'):4s}  SANDBOX_RUNTIME=1")
 print(f"  Proxy:       {_ok('proxy'):4s}  HTTP, HTTPS, and SSH via localhost")
 print(f"{'─' * 40}")
