@@ -6,7 +6,10 @@ between sessions. All operational knowledge lives here.
 
 Ubuntu container VM. `/home/claude/code` is a persistent volume mount of
 the host project — work there. Everything else in the container is ephemeral.
-Shell is bash. System tools available: `git`, `rg`, `gcc`, `make`.
+Shell is bash. Installed tooling: `git`, `rg` (ripgrep), `gcc`, `make`;
+Rust (`cargo`, `rustc`, `rust-analyzer`, `clippy`, `rustfmt`, `cargo-fuzz`,
+`cargo-llvm-cov`); Python (`python3`, `uv`, `basedpyright`); `duckdb`;
+`pandoc` and `typst` for document/PDF generation; `emacs`.
 
 ## Intent
 
@@ -54,3 +57,8 @@ Use `uv` for all package management (`uv add`, `uv run`, `uv sync`).
 
 Prefer `duckdb` over loading data into Python with pandas or similar for
 querying CSV, Parquet, JSON, or other data files.
+
+## Slash commands
+
+- `/verify` — run the sandbox isolation and toolchain checks
+- `/commit` — draft a commit message for the staged changes

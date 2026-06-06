@@ -74,7 +74,9 @@ at once.
   > **Note:** The token never appears on the command line, but is visible via
   > `container inspect` and inside the container's environment.
 
-  A `sandbox-checks.py` script in the container reports the isolation state.
+  Inside the container, the `/verify` slash command confirms the sandbox is sound. It
+  runs two scripts — `sandbox-checks.py` for isolation and `sandbox-tools.py` for the
+  toolchain — and summarizes both. The isolation half looks like this:
 
   ```
   ❯ python3 ~/sandbox-checks.py
@@ -133,8 +135,8 @@ at once.
 ### What's in the container
 
 The container is a workspace for writing and testing code with Claude. The default
-`Containerfile` reflects my own toolchain. Edit it to fit yours. A bundled
-`sandbox-tools.py` script shows what's installed.
+`Containerfile` reflects my own toolchain. Edit it to fit yours. The toolchain half of
+`/verify` (the bundled `sandbox-tools.py` script) shows what's installed.
 
   ```
   ❯ python3 ~/sandbox-tools.py

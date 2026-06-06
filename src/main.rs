@@ -33,6 +33,15 @@ const ASSETS: &[(&str, &str)] = &[
         "sandbox-checks.py",
         include_str!("assets/sandbox-checks.py"),
     ),
+    ("statusline.py", include_str!("assets/statusline.py")),
+    (
+        "commands/verify.md",
+        include_str!("assets/commands/verify.md"),
+    ),
+    (
+        "commands/commit.md",
+        include_str!("assets/commands/commit.md"),
+    ),
     (".gitconfig", include_str!("assets/.gitconfig")),
 ];
 
@@ -165,7 +174,12 @@ fn init_sandbox(sandbox_dir: &Path, force: bool, image: &str) -> Result<()> {
         .context("failed to write .claude-sandbox/image-name")?;
 
     for (name, content) in ASSETS {
-        fs::write(sandbox_dir.join(name), content)
+        let path = sandbox_dir.join(name);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::write(&path, content)
             .with_context(|| format!("failed to write .claude-sandbox/{name}"))?;
     }
 
@@ -341,6 +355,9 @@ mod tests {
         assert!(sandbox.join("CLAUDE.md").exists());
         assert!(sandbox.join("sandbox-tools.py").exists());
         assert!(sandbox.join("sandbox-checks.py").exists());
+        assert!(sandbox.join("statusline.py").exists());
+        assert!(sandbox.join("commands/verify.md").exists());
+        assert!(sandbox.join("commands/commit.md").exists());
     }
 
     #[test]

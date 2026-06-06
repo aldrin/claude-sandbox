@@ -32,9 +32,6 @@ RUN curl -sSL https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc-3.9
 RUN curl -sSL https://github.com/typst/typst/releases/latest/download/typst-aarch64-unknown-linux-musl.tar.xz \
     | tar -xJ --strip-components=1 -C /usr/local/bin
 
-# Fix bubblewrap: setuid root so it works inside the container VM
-RUN chmod u+s /usr/bin/bwrap
-
 # Create non-root user
 RUN useradd -m -d /home/claude -s /bin/bash claude
 USER claude
@@ -111,12 +108,15 @@ RUN claude plugin marketplace add anthropics/claude-plugins-official \
 USER root
 
 COPY claude.json /home/claude/.claude.json
-RUN mkdir -p /home/claude/.claude
+RUN mkdir -p /home/claude/.claude/commands
 COPY settings.json /home/claude/.claude/settings.json
 COPY CLAUDE.md /home/claude/CLAUDE.md
 COPY .gitconfig /home/claude/.gitconfig
 COPY sandbox-checks.py /home/claude/sandbox-checks.py
 COPY sandbox-tools.py /home/claude/sandbox-tools.py
+COPY statusline.py /home/claude/.claude/statusline.py
+RUN chmod +x /home/claude/.claude/statusline.py
+COPY commands/ /home/claude/.claude/commands/
 
 USER claude
 WORKDIR /home/claude
