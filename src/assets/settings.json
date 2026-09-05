@@ -1,21 +1,68 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
 
-  "model": "claude-opus-4-8",
+  "model": "claude-opus-5",
 
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/statusline.py"
+    "command": "jq -r '[(.model.display_name // .model.id // \"?\"), (.context_window.used_percentage | numbers | \"\\(floor)%\")] | join(\" · \")'"
   },
 
   "permissions": {
-    "defaultMode": "acceptEdits",
+    "defaultMode": "auto",
     "allow": [
       "WebSearch",
       "WebFetch(domain:index.crates.io)",
       "WebFetch(domain:static.crates.io)",
       "WebFetch(domain:192.168.64.1)",
       "Bash(cargo *)"
+    ],
+    "ask": [
+      "Bash(cargo add:*)",
+      "Bash(cargo remove:*)",
+      "Bash(cargo install:*)",
+      "Bash(uv add:*)",
+      "Bash(uv remove:*)",
+      "Bash(uv pip install:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(npm install:*)",
+      "Bash(npm add:*)",
+
+      "Edit(**/Cargo.toml)",
+      "Edit(**/Cargo.lock)",
+      "Edit(**/pyproject.toml)",
+      "Edit(**/uv.lock)",
+      "Edit(**/requirements*.txt)",
+      "Edit(**/package.json)",
+      "Edit(**/package-lock.json)"
+    ],
+    "deny": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git revert:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git restore:*)",
+      "Bash(git branch:*)",
+      "Bash(git tag:*)",
+      "Bash(git stash:*)",
+      "Bash(git clean:*)",
+      "Bash(git am:*)",
+      "Bash(git apply:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git update-ref:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git worktree:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git clone:*)",
+      "Bash(git submodule:*)"
     ]
   },
 
@@ -30,6 +77,24 @@
       "allowedDomains": [],
       "allowAllUnixSockets": false,
       "allowLocalBinding": true
+    },
+    "credentials": {
+      "files": [
+        { "path": "~/.aws", "mode": "deny" },
+        { "path": "~/.ssh", "mode": "deny" },
+        { "path": "~/.config/gcloud", "mode": "deny" },
+        { "path": "~/.netrc", "mode": "deny" }
+      ],
+      "envVars": [
+        { "name": "CLAUDE_CODE_OAUTH_TOKEN", "mode": "deny" },
+        { "name": "ANTHROPIC_API_KEY", "mode": "deny" },
+        { "name": "GITHUB_TOKEN", "mode": "deny" },
+        { "name": "GH_TOKEN", "mode": "deny" },
+        { "name": "NPM_TOKEN", "mode": "deny" },
+        { "name": "AWS_ACCESS_KEY_ID", "mode": "deny" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "mode": "deny" },
+        { "name": "AWS_SESSION_TOKEN", "mode": "deny" }
+      ]
     }
   },
 
@@ -40,8 +105,9 @@
     "feature-dev@claude-plugins-official": true
   },
 
-  "voice": { "enabled": false },
+  "attribution": { "commit": "", "pr": "", "sessionUrl": false },
   "autoMemoryEnabled": false,
+  "fileCheckpointingEnabled": false,
   "includeGitInstructions": false,
   "respectGitignore": true,
   "skipWebFetchPreflight": true,
@@ -71,13 +137,13 @@
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_DISABLE_CRON": "1",
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-    "CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING": "1",
     "CLAUDE_CODE_ENABLE_BACKGROUND_PLUGIN_REFRESH": "1",
     "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
 
     "ENABLE_LSP_TOOL": "1",
 
     "DISABLE_COST_WARNINGS": "1",
-    "DISABLE_INSTALLATION_CHECKS": "1"
+    "DISABLE_INSTALLATION_CHECKS": "1",
+    "DISABLE_AUTOUPDATER": "1"
   }
 }

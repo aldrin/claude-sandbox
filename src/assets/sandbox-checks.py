@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import socket
 import sys
+from urllib.parse import urlparse
 
 # ── Formatting ──────────────────────────────────────────────────────────
 
@@ -257,13 +258,21 @@ check(
 
 heading("Allowed traffic is mediated by proxy", "proxy")
 
-for var, expected_prefix in [
-    ("HTTP_PROXY", "http://localhost:"),
-    ("HTTPS_PROXY", "http://localhost:"),
-    ("ALL_PROXY", "socks5h://localhost:"),
+# The relay is addressed as "localhost" today, but the loopback literals are
+# the same endpoint and must not read as an escape.  ALL_PROXY has carried
+# both a SOCKS and an HTTP scheme across Claude Code versions; what matters
+# is that the URL names a proxy scheme pointing at loopback.
+LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+for var, allowed_schemes in [
+    ("HTTP_PROXY", {"http"}),
+    ("HTTPS_PROXY", {"http"}),
+    ("ALL_PROXY", {"http", "socks5", "socks5h"}),
 ]:
     val = os.environ.get(var, "")
-    check(val.startswith(expected_prefix), f"{var} points to local proxy", val or "<unset>")
+    parsed = urlparse(val)
+    routed = parsed.hostname in LOOPBACK and parsed.scheme in allowed_schemes
+    check(routed, f"{var} points to local proxy", val or "<unset>")
 
 check(
     "ProxyCommand" in os.environ.get("GIT_SSH_COMMAND", ""),

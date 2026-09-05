@@ -8,7 +8,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # Install system-level dependencies for all sections below.
 #   Base:     curl, git, ca-certificates
-#   Claude:   ripgrep
+#   Claude:   ripgrep, jq (status line)
 #   Sandbox:  bubblewrap + socat (bash isolation)
 #   Rust:     build-essential, pkg-config, libssl-dev
 #   Python:   python3, python3-dev
@@ -16,7 +16,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 #   Editor:   emacs-nox
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git ca-certificates \
-    ripgrep \
+    ripgrep jq \
     bubblewrap socat \
     build-essential pkg-config libssl-dev \
     python3 python3-dev \
@@ -31,6 +31,14 @@ RUN curl -sSL https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc-3.9
 # Typst typesetting compiler (not packaged in Ubuntu; pre-built binary from GitHub)
 RUN curl -sSL https://github.com/typst/typst/releases/latest/download/typst-aarch64-unknown-linux-musl.tar.xz \
     | tar -xJ --strip-components=1 -C /usr/local/bin
+
+# bwrap deliberately stays non-setuid. It isolates via unprivileged user
+# namespaces, which this VM kernel allows. Making it setuid root would work on
+# a kernel that restricts those, but it would also hand any bwrap escape the
+# root that keeps the config files below out of Claude's reach. If a kernel
+# upgrade ever restricts unprivileged userns, every Bash command fails at once
+# (settings.json sets failIfUnavailable) — restore isolation by re-enabling
+# userns on the host, not by adding the setuid bit here.
 
 # Create non-root user
 RUN useradd -m -d /home/claude -s /bin/bash claude
@@ -114,8 +122,6 @@ COPY CLAUDE.md /home/claude/CLAUDE.md
 COPY .gitconfig /home/claude/.gitconfig
 COPY sandbox-checks.py /home/claude/sandbox-checks.py
 COPY sandbox-tools.py /home/claude/sandbox-tools.py
-COPY statusline.py /home/claude/.claude/statusline.py
-RUN chmod +x /home/claude/.claude/statusline.py
 COPY commands/ /home/claude/.claude/commands/
 
 USER claude

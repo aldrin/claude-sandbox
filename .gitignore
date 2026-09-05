@@ -1,3 +1,4 @@
 /target
 /.idea
 /.claude-sandbox
+/src/assets/__pycache__

@@ -3,7 +3,8 @@
 //! External commands used:
 //! - container --version
 //! - container build -t <image> -f <containerfile> <context>
-//! - container run --rm -it -e <env> -m <memory> -c <cpus> -v <volume> <image>
+//! - container run --rm -it --masked-path NONE --read-only-path NONE
+//!   -e <env> -m <memory> -c <cpus> -v <volume> <image>
 //! - security find-generic-password -s <service> -w
 
 use std::env;
@@ -33,7 +34,6 @@ const ASSETS: &[(&str, &str)] = &[
         "sandbox-checks.py",
         include_str!("assets/sandbox-checks.py"),
     ),
-    ("statusline.py", include_str!("assets/statusline.py")),
     (
         "commands/verify.md",
         include_str!("assets/commands/verify.md"),
@@ -201,6 +201,17 @@ fn cmd_build() -> Result<()> {
         bail!(".claude-sandbox/Containerfile not found.\n{HINT_RUN_INIT}");
     }
 
+    let missing = missing_assets(&sandbox_dir);
+    if !missing.is_empty() {
+        bail!(
+            "Missing from .claude-sandbox/: {}\n\n\
+             This binary ships assets the workspace does not have. The Containerfile\n\
+             copies them, so the build would fail without explaining why.\n\
+             Run 'claude-sandbox init --force' to update the workspace.",
+            missing.join(", ")
+        );
+    }
+
     let sandbox_str = sandbox_dir.to_str().context("invalid sandbox path")?;
     let containerfile_path = sandbox_dir.join("Containerfile");
     let containerfile_str = containerfile_path
@@ -291,6 +302,20 @@ fn read_image_name(sandbox_dir: &Path) -> Result<String> {
     Ok(name)
 }
 
+/// Embedded assets that the workspace does not have on disk.
+///
+/// Only absence matters. Editing a scaffolded file is expected — the
+/// Containerfile is meant to be customized — but a binary upgrade can add an
+/// asset the Containerfile copies, and a workspace scaffolded by an older
+/// binary has nothing at that path.
+fn missing_assets(sandbox_dir: &Path) -> Vec<&'static str> {
+    ASSETS
+        .iter()
+        .map(|(name, _)| *name)
+        .filter(|name| !sandbox_dir.join(name).exists())
+        .collect()
+}
+
 fn check_container_available() -> Result<()> {
     debug!("checking container CLI availability");
     if exec_output_quiet("container", &["--version"]).is_none() {
@@ -324,6 +349,14 @@ fn run_args(cwd: &Path, image: &str, cpus: u8, memory: u8) -> Vec<String> {
         "run".to_string(),
         "--rm".to_string(),
         "-it".to_string(),
+        // Clear the runtime's default masked and read-only paths. Both sets are
+        // bind mounts over procfs subpaths, which leave /proc "not fully
+        // visible"; the kernel then refuses the fresh proc mount that Claude
+        // Code's bwrap sandbox needs, and every sandboxed command fails.
+        "--masked-path".to_string(),
+        "NONE".to_string(),
+        "--read-only-path".to_string(),
+        "NONE".to_string(),
         "-e".to_string(),
         "CLAUDE_CODE_OAUTH_TOKEN".to_string(),
         "-m".to_string(),
@@ -355,7 +388,6 @@ mod tests {
         assert!(sandbox.join("CLAUDE.md").exists());
         assert!(sandbox.join("sandbox-tools.py").exists());
         assert!(sandbox.join("sandbox-checks.py").exists());
-        assert!(sandbox.join("statusline.py").exists());
         assert!(sandbox.join("commands/verify.md").exists());
         assert!(sandbox.join("commands/commit.md").exists());
     }
@@ -433,6 +465,37 @@ mod tests {
     }
 
     #[test]
+    fn test_missing_assets_none_after_init() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "test").unwrap();
+        assert!(missing_assets(&sandbox).is_empty());
+    }
+
+    /// A workspace scaffolded by an older binary lacks newer assets; the
+    /// Containerfile copies them, so `build` must say so before failing.
+    #[test]
+    fn test_missing_assets_detects_absent_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "test").unwrap();
+        fs::remove_file(sandbox.join("sandbox-tools.py")).unwrap();
+        fs::remove_file(sandbox.join("commands/verify.md")).unwrap();
+        let missing = missing_assets(&sandbox);
+        assert_eq!(missing, vec!["sandbox-tools.py", "commands/verify.md"]);
+    }
+
+    /// Customizing a scaffolded file is expected and must not be reported.
+    #[test]
+    fn test_missing_assets_ignores_modification() {
+        let dir = tempfile::tempdir().unwrap();
+        let sandbox = dir.path().join(".claude-sandbox");
+        init_sandbox(&sandbox, false, "test").unwrap();
+        fs::write(sandbox.join("Containerfile"), "FROM ubuntu:26.04\n").unwrap();
+        assert!(missing_assets(&sandbox).is_empty());
+    }
+
+    #[test]
     fn test_read_image_name_missing() {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_image_name(dir.path()).is_err());
@@ -452,6 +515,10 @@ mod tests {
                 "run",
                 "--rm",
                 "-it",
+                "--masked-path",
+                "NONE",
+                "--read-only-path",
+                "NONE",
                 "-e",
                 "CLAUDE_CODE_OAUTH_TOKEN",
                 "-m",
@@ -468,16 +535,27 @@ mod tests {
     #[test]
     fn test_run_args_custom_resources() {
         let args = run_args(Path::new("/tmp/test"), "my-image", 8, 8);
-        assert_eq!(args[5], "-m");
-        assert_eq!(args[6], "8G");
-        assert_eq!(args[7], "-c");
-        assert_eq!(args[8], "8");
+        assert_eq!(args[9], "-m");
+        assert_eq!(args[10], "8G");
+        assert_eq!(args[11], "-c");
+        assert_eq!(args[12], "8");
     }
 
     #[test]
     fn test_run_args_volume_mount() {
         let args = run_args(Path::new("/Users/me/my project"), "img", 2, 4);
-        assert_eq!(args[10], "/Users/me/my project:/home/claude/code");
+        assert_eq!(args[14], "/Users/me/my project:/home/claude/code");
+    }
+
+    /// Without both paths cleared, bwrap cannot mount proc and every
+    /// sandboxed Bash command fails.
+    #[test]
+    fn test_run_args_clears_proc_path_defaults() {
+        let args = run_args(Path::new("/tmp/test"), "img", 2, 4);
+        for flag in ["--masked-path", "--read-only-path"] {
+            let i = args.iter().position(|a| a == flag).expect(flag);
+            assert_eq!(args[i + 1], "NONE", "{flag} must be cleared");
+        }
     }
 
     #[test]
