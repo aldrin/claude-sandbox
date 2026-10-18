@@ -200,9 +200,9 @@ installed plugins, and the runtime environment.
   Runtime environment is configured
 
     PASS  CARGO_TARGET_DIR=/home/claude/cargo-target
-    PASS  TMPDIR=/tmp/claude
     PASS  EDITOR=emacs
     PASS  TERM=xterm-256color
+    PASS  TMPDIR is under /tmp/claude
 
   ────────────────────────────────────────
   22 passed, 0 failed

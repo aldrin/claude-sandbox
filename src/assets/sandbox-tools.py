@@ -88,18 +88,25 @@ for plugin in ["rust-analyzer-lsp", "pyright-lsp", "code-simplifier", "feature-d
 # ── 3. Environment ────────────────────────────────────────────────────
 #
 # Variables set in the Containerfile and settings.json.  Present inside
-# and outside bwrap, except TMPDIR which bwrap overrides to /tmp/claude.
+# and outside bwrap, except TMPDIR which bwrap overrides to a path under /tmp/claude.
 
 heading("Runtime environment is configured")
 
 for var, expected in [
     ("CARGO_TARGET_DIR", "/home/claude/cargo-target"),
-    ("TMPDIR", "/tmp/claude"),
     ("EDITOR", "emacs"),
     ("TERM", "xterm-256color"),
 ]:
     val = os.environ.get(var)
     check(val == expected, f"{var}={expected}", f"actual={val}")
+
+# bwrap points TMPDIR at a per-user subdirectory of /tmp/claude.
+tmpdir = os.environ.get("TMPDIR", "")
+check(
+    tmpdir == "/tmp/claude" or tmpdir.startswith("/tmp/claude/"),
+    "TMPDIR is under /tmp/claude",
+    f"actual={tmpdir}",
+)
 
 
 # ── Summary ────────────────────────────────────────────────────────────

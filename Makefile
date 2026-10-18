@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt check clean install rebuild help
+.PHONY: all build test lint fmt cov check clean install rebuild help
 
 ## Default target
 all: check

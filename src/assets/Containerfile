@@ -24,8 +24,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     emacs-nox \
     && rm -rf /var/lib/apt/lists/*
 
-# Pandoc (apt version lags behind; install pre-built binary from GitHub)
-RUN curl -sSL https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc-3.9.0.2-linux-arm64.tar.gz \
+# Pandoc (apt version lags behind; install pre-built binary from GitHub).
+# Release asset names embed the version, so the /releases/latest/download
+# shortcut typst uses below does not work here — resolve the tag first by
+# reading where /releases/latest redirects.
+RUN PANDOC_VERSION="$(basename "$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+        https://github.com/jgm/pandoc/releases/latest)")" \
+    && test -n "$PANDOC_VERSION" \
+    && curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-arm64.tar.gz" \
     | tar -xz --strip-components=1 -C /usr/local
 
 # Typst typesetting compiler (not packaged in Ubuntu; pre-built binary from GitHub)
@@ -51,7 +57,8 @@ ENV PATH="/home/claude/.local/bin:/home/claude/.cargo/bin:${PATH}"
 ENV TERM=xterm-256color
 ENV EDITOR=emacs
 
-# bwrap sets TMPDIR=/tmp/claude at runtime; ensure the directory exists
+# Claude Code's TMPDIR lives under /tmp/claude (CLAUDE_CODE_TMPDIR) and the
+# sandbox binds that directory, so it must exist
 RUN mkdir -p /tmp/claude
 
 # =============================================================================

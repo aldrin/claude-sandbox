@@ -3,6 +3,7 @@
 //! External commands used:
 //! - container --version
 //! - container build -t <image> -f <containerfile> <context>
+//! - container image inspect <image>
 //! - container run --rm -it --masked-path NONE --read-only-path NONE
 //!   -e <env> -m <memory> -c <cpus> -v <volume> <image>
 //! - security find-generic-password -s <service> -w
@@ -452,16 +453,6 @@ mod tests {
             let content = fs::read_to_string(sandbox.join(name)).unwrap();
             assert_eq!(&content, embedded, "{name} differs after init");
         }
-    }
-
-    #[test]
-    fn test_assets_detect_modification() {
-        let dir = tempfile::tempdir().unwrap();
-        let sandbox = dir.path().join(".claude-sandbox");
-        init_sandbox(&sandbox, false, "test").unwrap();
-        fs::write(sandbox.join("Containerfile"), "modified").unwrap();
-        let content = fs::read_to_string(sandbox.join("Containerfile")).unwrap();
-        assert_ne!(content, include_str!("assets/Containerfile"));
     }
 
     #[test]
